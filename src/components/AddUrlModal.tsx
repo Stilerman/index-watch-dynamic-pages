@@ -1,11 +1,11 @@
 
 import React, { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { UrlGroup } from "@/types";
 
 interface AddUrlModalProps {
@@ -16,27 +16,37 @@ interface AddUrlModalProps {
 }
 
 const AddUrlModal = ({ open, onClose, onAdd, groups }: AddUrlModalProps) => {
-  const [urls, setUrls] = useState("");
-  const [selectedGroup, setSelectedGroup] = useState<string>("");
+  const [urlsInput, setUrlsInput] = useState("");
+  const [selectedGroupId, setSelectedGroupId] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
-  const [isNewGroup, setIsNewGroup] = useState(false);
+  const [isCreatingNewGroup, setIsCreatingNewGroup] = useState(false);
 
   const handleSubmit = () => {
-    const urlList = urls.split("\n").map((url) => url.trim()).filter((url) => url !== "");
-    if (urlList.length === 0) return;
+    // Разделяем URL по переносу строки и убираем пустые строки
+    const urls = urlsInput
+      .split("\n")
+      .map(url => url.trim())
+      .filter(url => url !== "");
 
-    if (isNewGroup && newGroupName.trim()) {
-      onAdd(urlList, newGroupName.trim());
-    } else if (selectedGroup) {
-      onAdd(urlList, selectedGroup);
-    } else {
-      onAdd(urlList);
-    }
+    if (urls.length === 0) return;
 
-    setUrls("");
-    setSelectedGroup("");
+    // Используем либо ID существующей группы, либо название новой
+    const groupIdOrName = isCreatingNewGroup 
+      ? newGroupName.trim() 
+      : selectedGroupId;
+
+    console.log("Добавляем URLs:", urls);
+    console.log("В группу:", groupIdOrName);
+    
+    onAdd(urls, groupIdOrName);
+    resetForm();
+  };
+
+  const resetForm = () => {
+    setUrlsInput("");
+    setSelectedGroupId("");
     setNewGroupName("");
-    setIsNewGroup(false);
+    setIsCreatingNewGroup(false);
     onClose();
   };
 
@@ -44,70 +54,74 @@ const AddUrlModal = ({ open, onClose, onAdd, groups }: AddUrlModalProps) => {
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Добавить URL для проверки</DialogTitle>
+          <DialogTitle>Добавить URL</DialogTitle>
         </DialogHeader>
         
-        <div className="grid gap-4 py-4">
-          <div className="grid gap-2">
-            <Label htmlFor="urls">URL адреса (по одному на строку)</Label>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="urls">URL адреса</Label>
             <Textarea
               id="urls"
-              placeholder="https://example.com/page1&#10;https://example.com/page2"
+              value={urlsInput}
+              onChange={(e) => setUrlsInput(e.target.value)}
+              placeholder="Введите URL-адреса, по одному на строку"
               rows={5}
-              value={urls}
-              onChange={(e) => setUrls(e.target.value)}
             />
           </div>
           
-          <div className="grid gap-2">
-            <Label>Выберите группу</Label>
-            <div className="flex gap-2">
-              <Select
-                disabled={isNewGroup}
-                value={selectedGroup}
-                onValueChange={setSelectedGroup}
+          <div className="space-y-2">
+            <Label>Группа</Label>
+            
+            <div className="flex items-center space-x-2">
+              <Button
+                type="button"
+                variant={isCreatingNewGroup ? "outline" : "default"}
+                onClick={() => setIsCreatingNewGroup(false)}
+                className="w-1/2"
               >
+                Существующая группа
+              </Button>
+              
+              <Button
+                type="button"
+                variant={!isCreatingNewGroup ? "outline" : "default"}
+                onClick={() => setIsCreatingNewGroup(true)}
+                className="w-1/2"
+              >
+                Новая группа
+              </Button>
+            </div>
+            
+            {isCreatingNewGroup ? (
+              <Input
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                placeholder="Название новой группы"
+              />
+            ) : (
+              <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Выберите группу" />
                 </SelectTrigger>
                 <SelectContent>
-                  {groups.map((group) => (
-                    <SelectItem key={group.id} value={group.id}>
-                      {group.name}
-                    </SelectItem>
-                  ))}
+                  <SelectGroup>
+                    {groups.map(group => (
+                      <SelectItem key={group.id} value={group.id}>
+                        {group.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
-              <Button 
-                variant="outline" 
-                onClick={() => setIsNewGroup(!isNewGroup)}
-                type="button"
-              >
-                {isNewGroup ? "Выбрать существующую" : "Новая группа"}
-              </Button>
-            </div>
+            )}
           </div>
-          
-          {isNewGroup && (
-            <div className="grid gap-2">
-              <Label htmlFor="newGroup">Название новой группы</Label>
-              <Input
-                id="newGroup"
-                placeholder="Например: Блог"
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-              />
-            </div>
-          )}
         </div>
         
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>Отмена</Button>
-          <Button 
-            type="button" 
-            onClick={handleSubmit}
-            disabled={urls.trim() === "" || (isNewGroup && newGroupName === "")}
-          >
+          <Button variant="outline" onClick={resetForm}>
+            Отмена
+          </Button>
+          <Button onClick={handleSubmit}>
             Добавить
           </Button>
         </DialogFooter>

@@ -25,14 +25,29 @@ export const checkIndexation = async (url: string): Promise<{ google: boolean; y
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}?key=${apiKey}&url=${encodeURIComponent(url)}`);
+    // Для целей демонстрации, если настоящий API недоступен
+    // Можно раскомментировать эту симуляцию, чтобы увидеть, как работает интерфейс
+    // return {
+    //   google: Math.random() > 0.5,
+    //   yandex: Math.random() > 0.5
+    // };
+    
+    console.log(`Проверка индексации для URL: ${url} с ключом ${apiKey}`);
+    const response = await fetch(`${API_BASE_URL}?key=${apiKey}&url=${encodeURIComponent(url)}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+    });
     
     if (!response.ok) {
       const errorText = await response.text();
+      console.error("Ошибка API: ", response.status, errorText);
       throw new Error(`Ошибка API: ${response.status} ${errorText}`);
     }
     
     const data = await response.json();
+    console.log("Ответ API:", data);
     
     // Проверка формата ответа
     if (typeof data.google !== "boolean" || typeof data.yandex !== "boolean") {
@@ -45,7 +60,7 @@ export const checkIndexation = async (url: string): Promise<{ google: boolean; y
     };
   } catch (error) {
     console.error("Ошибка при проверке индексации:", error);
-    return null;
+    throw error; // Пробрасываем ошибку дальше
   }
 };
 

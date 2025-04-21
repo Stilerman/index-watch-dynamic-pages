@@ -5,10 +5,12 @@ import DashboardCard from "@/components/DashboardCard";
 import IndexationTable from "@/components/IndexationTable";
 import AddUrlModal from "@/components/AddUrlModal";
 import { IndexationResult, UrlGroup } from "@/types";
-import { RiAddLine, RiCheckLine, RiRefreshLine, RiLinksLine } from "react-icons/ri";
-import { batchCheckIndexation } from "@/services/indexationApi";
+import { RiAddLine, RiCheckLine, RiRefreshLine, RiLinksLine, RiSettings4Line } from "react-icons/ri";
+import { batchCheckIndexation, getApiKey } from "@/services/indexationApi";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { Link } from "react-router-dom";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const Dashboard = () => {
   const [results, setResults] = useState<IndexationResult[]>([]);
@@ -68,20 +70,24 @@ const Dashboard = () => {
       if (supaGroups) {
         const groupsWithUrls: UrlGroup[] = [];
         for (const group of supaGroups) {
-          const { data: urls, error: urlsError } = await supabase
-            .from("group_urls")
-            .select("url")
-            .eq("group_id", group.id);
-            
-          if (urlsError) {
-            console.error(`Ошибка загрузки URL для группы ${group.id}:`, urlsError.message);
+          try {
+            const { data: urls, error: urlsError } = await supabase
+              .from("group_urls")
+              .select("url")
+              .eq("group_id", group.id);
+              
+            if (urlsError) {
+              console.error(`Ошибка загрузки URL для группы ${group.id}:`, urlsError.message);
+            }
+              
+            groupsWithUrls.push({
+              id: group.id,
+              name: group.name,
+              urls: urls ? urls.map(u => u.url) : []
+            });
+          } catch (innerError: any) {
+            console.error(`Ошибка при обработке группы ${group.id}:`, innerError);
           }
-            
-          groupsWithUrls.push({
-            id: group.id,
-            name: group.name,
-            urls: urls ? urls.map(u => u.url) : []
-          });
         }
         setGroups(groupsWithUrls);
       }
@@ -97,6 +103,16 @@ const Dashboard = () => {
 
   const handleAddUrls = async (urls: string[], groupIdOrName?: string) => {
     try {
+      const apiKey = getApiKey();
+      if (!apiKey) {
+        toast({
+          title: "API ключ не найден",
+          description: "Пожалуйста, добавьте API ключ в настройках перед проверкой URL.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
       setIsLoading(true);
       let groupId = "";
 
@@ -123,10 +139,16 @@ const Dashboard = () => {
         groupId = existingGroup.id;
       }
 
+      toast({
+        title: "Проверка URL",
+        description: "Начата проверка индексации URL...",
+      });
+
       const newResults = await batchCheckIndexation(urls);
+      console.log("Результаты проверки:", newResults);
 
       for (const result of newResults) {
-        await supabase
+        const { error } = await supabase
           .from("indexation_results")
           .upsert({
             url: result.url,
@@ -134,6 +156,10 @@ const Dashboard = () => {
             yandex: result.yandex,
             date: result.date
           }, { onConflict: 'url' });
+          
+        if (error) {
+          console.error("Ошибка при сохранении результата:", error);
+        }
       }
 
       if (groupId) {
@@ -141,9 +167,14 @@ const Dashboard = () => {
           group_id: groupId,
           url: url.trim()
         }));
-        await supabase
+        
+        const { error } = await supabase
           .from("group_urls")
           .upsert(urlInserts, { onConflict: 'group_id,url' });
+          
+        if (error) {
+          console.error("Ошибка при добавлении URL в группу:", error);
+        }
       }
 
       // Обновляем данные сразу после добавления
@@ -155,6 +186,7 @@ const Dashboard = () => {
         description: `Добавлено ${newResults.length} URL для мониторинга.`
       });
     } catch (error: any) {
+      console.error("Ошибка при добавлении URL:", error);
       toast({
         title: "Ошибка",
         description: "Не удалось добавить URL: " + error.message,
@@ -206,7 +238,22 @@ const Dashboard = () => {
 
   const handleCheckUrl = async (url: string) => {
     try {
+      const apiKey = getApiKey();
+      if (!apiKey) {
+        toast({
+          title: "API ключ не найден",
+          description: "Пожалуйста, добавьте API ключ в настройках перед проверкой URL.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
       setIsLoading(true);
+      toast({
+        title: "Проверка URL",
+        description: `Проверяется индексация для ${url}...`
+      });
+      
       const [result] = await batchCheckIndexation([url]);
       
       if (result) {
@@ -248,6 +295,16 @@ const Dashboard = () => {
 
   const handleRefreshAll = async () => {
     try {
+      const apiKey = getApiKey();
+      if (!apiKey) {
+        toast({
+          title: "API ключ не найден",
+          description: "Пожалуйста, добавьте API ключ в настройках перед проверкой URL.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
       if (results.length === 0) {
         toast({
           title: "Нет URL для проверки",
@@ -258,6 +315,12 @@ const Dashboard = () => {
       
       setIsLoading(true);
       const urls = results.map(r => r.url);
+      
+      toast({
+        title: "Обновление",
+        description: `Начата проверка индексации ${urls.length} URL...`
+      });
+      
       const newResults = await batchCheckIndexation(urls);
       
       for (const result of newResults) {
@@ -298,6 +361,7 @@ const Dashboard = () => {
   const indexedInGoogle = results.filter(r => r.google).length;
   const indexedInYandex = results.filter(r => r.yandex).length;
   const notIndexedTotal = results.filter(r => !r.google || !r.yandex).length;
+  const apiKeyExists = !!getApiKey();
 
   return (
     <div className="space-y-6">
@@ -321,6 +385,20 @@ const Dashboard = () => {
           </Button>
         </div>
       </div>
+
+      {!apiKeyExists && (
+        <Alert variant="destructive">
+          <AlertTitle>Требуется API ключ</AlertTitle>
+          <AlertDescription className="flex items-center justify-between">
+            <span>Для работы с проверкой индексации необходимо указать API ключ в настройках.</span>
+            <Link to="/settings">
+              <Button size="sm" variant="outline" className="flex items-center">
+                <RiSettings4Line className="mr-2 h-4 w-4" /> Настройки
+              </Button>
+            </Link>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <DashboardCard 
@@ -367,6 +445,24 @@ const Dashboard = () => {
         onAdd={handleAddUrls}
         groups={groups}
       />
+
+      {results.length === 0 && (
+        <div className="py-12 text-center">
+          <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <RiLinksLine className="h-8 w-8 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-1">Нет добавленных URL</h3>
+          <p className="text-gray-500">
+            Добавьте URL для проверки индексации в поисковых системах.
+          </p>
+          <Button 
+            onClick={() => setIsAddModalOpen(true)} 
+            className="mt-4"
+          >
+            <RiAddLine className="mr-2 h-4 w-4" /> Добавить первый URL
+          </Button>
+        </div>
+      )}
     </div>
   );
 };

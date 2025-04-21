@@ -4,70 +4,42 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { ApiSettings } from "@/types";
-import { getApiSettings, saveApiSettings } from "@/services/storageService";
-import { setApiKey } from "@/services/indexationApi";
-import { useToast } from "@/components/ui/use-toast";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { getApiKey, setApiKey } from "@/services/indexationApi";
+import { useToast } from "@/hooks/use-toast";
+import { RiInformationLine } from "react-icons/ri";
 
 const Settings = () => {
-  const [settings, setSettings] = useState<ApiSettings>({
-    key: "",
-    checkInterval: 24,
-    notificationsEnabled: true
-  });
-  const [isSaving, setIsSaving] = useState(false);
+  const [apiKey, setApiKeyLocal] = useState("");
+  const [checkInterval, setCheckInterval] = useState("24");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const { toast } = useToast();
 
-  // Загрузка настроек при монтировании
   useEffect(() => {
-    setSettings(getApiSettings());
+    // Загрузка API ключа при монтировании компонента
+    setApiKeyLocal(getApiKey());
+    
+    // Загрузка других настроек из localStorage
+    const savedInterval = localStorage.getItem("check-interval") || "24";
+    setCheckInterval(savedInterval);
+    
+    const savedNotifications = localStorage.getItem("notifications-enabled");
+    setNotificationsEnabled(savedNotifications === null ? true : savedNotifications === "true");
   }, []);
 
-  // Обработчики изменения полей
-  const handleKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSettings(prev => ({ ...prev, key: e.target.value }));
-  };
-
-  const handleIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value);
-    if (!isNaN(value) && value > 0) {
-      setSettings(prev => ({ ...prev, checkInterval: value }));
-    }
-  };
-
-  const handleNotificationsChange = (checked: boolean) => {
-    setSettings(prev => ({ ...prev, notificationsEnabled: checked }));
-  };
-
-  // Сохранение настроек
-  const handleSave = () => {
-    setIsSaving(true);
+  const handleSaveSettings = () => {
+    // Сохраняем API ключ
+    setApiKey(apiKey);
     
-    try {
-      saveApiSettings(settings);
-      setApiKey(settings.key);
-      
-      toast({
-        title: "Настройки сохранены",
-        description: "Ваши настройки успешно сохранены."
-      });
-    } catch (error) {
-      toast({
-        title: "Ошибка",
-        description: "Не удалось сохранить настройки.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsSaving(false);
-    }
+    // Сохраняем другие настройки
+    localStorage.setItem("check-interval", checkInterval);
+    localStorage.setItem("notifications-enabled", String(notificationsEnabled));
+    
+    toast({
+      title: "Настройки сохранены",
+      description: "Ваши настройки успешно сохранены",
+    });
   };
 
   return (
@@ -80,57 +52,71 @@ const Settings = () => {
         <CardHeader>
           <CardTitle>Настройки API</CardTitle>
           <CardDescription>
-            Настройте параметры работы с API для проверки индексации.
+            Настройка подключения к API для проверки индексации
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-2">
+          <div className="space-y-2">
             <Label htmlFor="api-key">API Ключ</Label>
             <Input
               id="api-key"
-              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKeyLocal(e.target.value)}
               placeholder="Введите ваш API ключ"
-              value={settings.key}
-              onChange={handleKeyChange}
             />
-            <p className="text-xs text-gray-500">
-              API ключ можно получить на сайте <a href="https://arsenkin.ru/tools/blog/api-indexation/" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">arsenkin.ru</a>
+            <p className="text-sm text-gray-500">
+              Ключ для доступа к API проверки индексации.
             </p>
           </div>
-          
-          <div className="grid gap-2">
-            <Label htmlFor="check-interval">Интервал проверки (часы)</Label>
+
+          <Alert variant="default" className="bg-blue-50 border-blue-200">
+            <RiInformationLine className="h-4 w-4" />
+            <AlertTitle>Важно</AlertTitle>
+            <AlertDescription>
+              Для работы с приложением необходимо указать действующий API ключ. 
+              После указания ключа вы сможете проверять индексацию URL в поисковых системах.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+        <CardFooter>
+          <Button onClick={handleSaveSettings}>Сохранить настройки</Button>
+        </CardFooter>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Настройки проверки</CardTitle>
+          <CardDescription>
+            Настройка автоматической проверки и уведомлений
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="check-interval">Интервал проверки (часов)</Label>
             <Input
               id="check-interval"
               type="number"
               min="1"
               max="168"
-              value={settings.checkInterval}
-              onChange={handleIntervalChange}
+              value={checkInterval}
+              onChange={(e) => setCheckInterval(e.target.value)}
             />
-            <p className="text-xs text-gray-500">
-              Как часто система будет проверять индексацию URL.
+            <p className="text-sm text-gray-500">
+              Как часто система будет автоматически проверять индексацию.
             </p>
           </div>
-          
-          <div className="flex items-center justify-between">
-            <div>
-              <Label htmlFor="notifications">Уведомления</Label>
-              <p className="text-xs text-gray-500">
-                Получать уведомления о вылете страниц из индекса.
-              </p>
-            </div>
+
+          <div className="flex items-center space-x-2">
             <Switch
               id="notifications"
-              checked={settings.notificationsEnabled}
-              onCheckedChange={handleNotificationsChange}
+              checked={notificationsEnabled}
+              onCheckedChange={setNotificationsEnabled}
             />
+            <Label htmlFor="notifications">Включить уведомления</Label>
           </div>
         </CardContent>
         <CardFooter>
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? "Сохранение..." : "Сохранить настройки"}
-          </Button>
+          <Button onClick={handleSaveSettings}>Сохранить настройки</Button>
         </CardFooter>
       </Card>
     </div>
