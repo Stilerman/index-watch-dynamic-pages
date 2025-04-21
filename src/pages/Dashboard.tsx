@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import DashboardCard from "@/components/DashboardCard";
 import IndexationTable from "@/components/IndexationTable";
@@ -19,88 +19,83 @@ const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  useEffect(() => {
-    fetchIndexationResults();
-    fetchGroups();
-  }, []);
-
-  const fetchIndexationResults = async () => {
+  // Загрузка результатов и групп с Supabase
+  const fetchData = useCallback(async () => {
     try {
-      const { data: indexationResults, error } = await supabase
+      setIsLoading(true);
+
+      // Получаем список результатов индексации
+      const { data: dbResults, error: resultsError } = await supabase
         .from("indexation_results")
+        .select("*")
+        .order("date", { ascending: false });
+
+      if (resultsError) {
+        toast({
+          title: "Ошибка загрузки результатов",
+          description: resultsError.message,
+          variant: "destructive"
+        });
+        return;
+      }
+      setResults(dbResults ?? []);
+
+      // Получаем список групп
+      const { data: dbGroups, error: groupsError } = await supabase
+        .from("url_groups")
         .select("*");
 
-      if (error) {
-        console.error("Ошибка при загрузке результатов индексации:", error);
+      if (groupsError) {
         toast({
-          title: "Ошибка",
-          description: "Не удалось загрузить результаты индексации",
+          title: "Ошибка загрузки групп",
+          description: groupsError.message,
           variant: "destructive"
         });
         return;
       }
 
-      setResults(indexationResults || []);
-    } catch (e: any) {
-      console.error("Ошибка при загрузке результатов индексации:", e);
-      toast({
-        title: "Ошибка",
-        description: "Не удалось загрузить результаты индексации: " + e.message,
-        variant: "destructive"
-      });
-    }
-  };
+      // Для каждой группы подгружаем её URL (через связь group_urls)
+      const groupsWithUrls: UrlGroup[] = [];
 
-  const fetchGroups = async () => {
-    try {
-      const { data: supaGroups, error } = await supabase
-        .from("url_groups")
-        .select("id, name");
-        
-      if (error) {
-        console.error("Ошибка загрузки групп из Supabase:", error.message);
-        toast({
-          title: "Ошибка",
-          description: `Не удалось загрузить группы: ${error.message}`,
-          variant: "destructive"
-        });
-        return;
-      }
+      for (const group of dbGroups ?? []) {
+        const { data: groupUrls, error: groupUrlsError } = await supabase
+          .from("group_urls")
+          .select("url")
+          .eq("group_id", group.id);
 
-      if (supaGroups) {
-        const groupsWithUrls: UrlGroup[] = [];
-        for (const group of supaGroups) {
-          try {
-            const { data: urls, error: urlsError } = await supabase
-              .from("group_urls")
-              .select("url")
-              .eq("group_id", group.id);
-              
-            if (urlsError) {
-              console.error(`Ошибка загрузки URL для группы ${group.id}:`, urlsError.message);
-            }
-              
-            groupsWithUrls.push({
-              id: group.id,
-              name: group.name,
-              urls: urls ? urls.map(u => u.url) : []
-            });
-          } catch (innerError: any) {
-            console.error(`Ошибка при обработке группы ${group.id}:`, innerError);
-          }
+        if (groupUrlsError) {
+          toast({
+            title: `Ошибка группировки (${group.name})`,
+            description: groupUrlsError.message,
+            variant: "destructive"
+          });
+          continue;
         }
-        setGroups(groupsWithUrls);
+
+        groupsWithUrls.push({
+          id: group.id,
+          name: group.name,
+          urls: groupUrls ? groupUrls.map(u => u.url) : [],
+        });
       }
-    } catch (e: any) {
-      console.error("Ошибка при загрузке групп:", e);
+      setGroups(groupsWithUrls);
+
+    } catch (error: any) {
       toast({
-        title: "Ошибка",
-        description: `Произошла ошибка при загрузке групп: ${e.message}`,
+        title: "Ошибка загрузки",
+        description: error.message,
         variant: "destructive"
       });
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, [toast]);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Добавление URL
   const handleAddUrls = async (urls: string[], groupIdOrName?: string) => {
     try {
       const apiKey = getApiKey();
@@ -112,84 +107,71 @@ const Dashboard = () => {
         });
         return;
       }
-      
       setIsLoading(true);
+
+      // --- Создание группы если указано название ---
       let groupId = "";
-
-      const existingGroup = groups.find(g => g.id === groupIdOrName);
-
-      if (groupIdOrName && !existingGroup) {
-        const { data: newGroup, error } = await supabase
-          .from("url_groups")
-          .insert({ name: groupIdOrName })
-          .select()
-          .single();
-
-        if (error) {
-          toast({
-            title: "Ошибка",
-            description: `Не удалось создать группу: ${error.message}`,
-            variant: "destructive"
-          });
-          setIsLoading(false);
-          return;
+      if (groupIdOrName) {
+        // Проверяем, есть ли группа с таким id
+        let existing = groups.find(g => g.id === groupIdOrName || g.name === groupIdOrName);
+        if (!existing) {
+          const { data: createdGroup, error } = await supabase.from("url_groups")
+            .insert({ name: groupIdOrName })
+            .select()
+            .single();
+          if (error) {
+            toast({
+              title: "Ошибка создания группы",
+              description: error.message,
+              variant: "destructive"
+            });
+            setIsLoading(false);
+            return;
+          }
+          groupId = createdGroup.id;
+        } else {
+          groupId = existing.id;
         }
-        groupId = newGroup.id;
-      } else if (existingGroup) {
-        groupId = existingGroup.id;
       }
 
       toast({
         title: "Проверка URL",
-        description: "Начата проверка индексации URL...",
+        description: "Выполняется проверка URL...",
       });
 
       const newResults = await batchCheckIndexation(urls);
-      console.log("Результаты проверки:", newResults);
 
+      // Сохраняем результаты в indexation_results
       for (const result of newResults) {
-        const { error } = await supabase
-          .from("indexation_results")
-          .upsert({
+        await supabase.from("indexation_results").upsert(
+          {
             url: result.url,
             google: result.google,
             yandex: result.yandex,
-            date: result.date
-          }, { onConflict: 'url' });
-          
-        if (error) {
-          console.error("Ошибка при сохранении результата:", error);
-        }
+            date: result.date,
+          },
+          { onConflict: "url" }
+        );
       }
 
+      // Сохраняем связи с группой (если есть)
       if (groupId) {
-        const urlInserts = urls.map(url => ({
+        const urlsToInsert = urls.map(url => ({
           group_id: groupId,
-          url: url.trim()
+          url: url.trim(),
         }));
-        
-        const { error } = await supabase
-          .from("group_urls")
-          .upsert(urlInserts, { onConflict: 'group_id,url' });
-          
-        if (error) {
-          console.error("Ошибка при добавлении URL в группу:", error);
-        }
+        await supabase.from("group_urls").upsert(urlsToInsert, { onConflict: "group_id,url" });
       }
 
-      // Обновляем данные сразу после добавления
-      await fetchIndexationResults();
-      await fetchGroups();
-
+      await fetchData();
       toast({
-        title: "URL добавлены",
+        title: "Готово!",
         description: `Добавлено ${newResults.length} URL для мониторинга.`
       });
     } catch (error: any) {
-      console.error("Ошибка при добавлении URL:", error);
       toast({
         title: "Ошибка",
-        description: "Не удалось добавить URL: " + error.message,
+        description: error.message,
         variant: "destructive"
       });
     } finally {
@@ -197,45 +179,26 @@ const Dashboard = () => {
     }
   };
 
+  // Удаление URL
   const handleDeleteUrl = async (url: string) => {
     try {
-      const { error } = await supabase
-        .from("indexation_results")
-        .delete()
-        .eq("url", url);
-        
-      if (error) {
-        throw new Error(error.message);
-      }
-      
-      const { error: groupUrlError } = await supabase
-        .from("group_urls")
-        .delete()
-        .eq("url", url);
-        
-      if (groupUrlError) {
-        console.error("Ошибка при удалении URL из групп:", groupUrlError);
-      }
-      
-      // Обновляем локальные данные немедленно
-      setResults(results.filter(r => r.url !== url));
-      
-      // Также обновляем группы
-      fetchGroups();
-      
+      await supabase.from("indexation_results").delete().eq("url", url);
+      await supabase.from("group_urls").delete().eq("url", url);
+      await fetchData();
       toast({
-        title: "URL удален",
-        description: "URL успешно удален из мониторинга."
+        title: "URL удалён",
+        description: "URL успешно удалён из мониторинга."
       });
     } catch (error: any) {
       toast({
-        title: "Ошибка",
-        description: "Не удалось удалить URL: " + error.message,
+        title: "Ошибка при удалении",
+        description: error.message,
         variant: "destructive"
       });
     }
   };
 
+  // Проверить конкретный URL
   const handleCheckUrl = async (url: string) => {
     try {
       const apiKey = getApiKey();
@@ -247,45 +210,33 @@ const Dashboard = () => {
         });
         return;
       }
-      
       setIsLoading(true);
       toast({
         title: "Проверка URL",
-        description: `Проверяется индексация для ${url}...`
+        description: "Проверяется индексация..."
       });
-      
+
       const [result] = await batchCheckIndexation([url]);
-      
       if (result) {
-        const { error } = await supabase
-          .from("indexation_results")
-          .upsert({
+        await supabase.from("indexation_results").upsert(
+          {
             url: result.url,
             google: result.google,
             yandex: result.yandex,
-            date: result.date
-          }, { onConflict: 'url' });
-          
-        if (error) {
-          throw new Error(error.message);
-        }
-        
-        // Обновляем локальные данные немедленно
-        setResults(prevResults => 
-          prevResults.map(r => 
-            r.url === result.url ? result : r
-          )
+            date: result.date,
+          },
+          { onConflict: "url" }
         );
-        
         toast({
-          title: "Проверка выполнена",
-          description: "Индексация URL успешно проверена."
+          title: "Проверка завершена",
+          description: "Индексация обновлена."
         });
       }
+      await fetchData();
     } catch (error: any) {
       toast({
-        title: "Ошибка",
-        description: "Не удалось проверить индексацию: " + error.message,
+        title: "Ошибка при проверке",
+        description: error.message,
         variant: "destructive"
       });
     } finally {
@@ -293,62 +244,52 @@ const Dashboard = () => {
     }
   };
 
+  // Проверить все
   const handleRefreshAll = async () => {
     try {
       const apiKey = getApiKey();
       if (!apiKey) {
         toast({
           title: "API ключ не найден",
-          description: "Пожалуйста, добавьте API ключ в настройках перед проверкой URL.",
+          description: "Пожалуйста, добавьте API ключ в настройках.",
           variant: "destructive"
         });
         return;
       }
-      
       if (results.length === 0) {
         toast({
-          title: "Нет URL для проверки",
-          description: "Добавьте URL для мониторинга."
+          title: "Нет URL",
+          description: "Сначала добавьте адреса."
         });
         return;
       }
-      
       setIsLoading(true);
-      const urls = results.map(r => r.url);
-      
       toast({
-        title: "Обновление",
-        description: `Начата проверка индексации ${urls.length} URL...`
+        title: "Обновление всех",
+        description: "Проверяем все URL..."
       });
-      
+      const urls = results.map(r => r.url);
       const newResults = await batchCheckIndexation(urls);
-      
       for (const result of newResults) {
-        const { error } = await supabase
-          .from("indexation_results")
-          .upsert({
+        await supabase.from("indexation_results").upsert(
+          {
             url: result.url,
             google: result.google,
             yandex: result.yandex,
-            date: result.date
-          }, { onConflict: 'url' });
-          
-        if (error) {
-          console.error("Ошибка обновления индексации:", error);
-        }
+            date: result.date,
+          },
+          { onConflict: "url" }
+        );
       }
-      
-      // Обновляем локальные данные вместо запроса к серверу
-      setResults(newResults);
-      
+      await fetchData();
       toast({
-        title: "Обновление выполнено",
-        description: `Проверено ${newResults.length} URL.`
+        title: "Обновлено",
+        description: `${newResults.length} URL проверено`
       });
     } catch (error: any) {
       toast({
-        title: "Ошибка",
-        description: "Не удалось обновить данные: " + error.message,
+        title: "Ошибка обновления",
+        description: error.message,
         variant: "destructive"
       });
     } finally {
@@ -356,7 +297,7 @@ const Dashboard = () => {
     }
   };
 
-  // Вычисляем статистику на основе актуальных данных
+  // Статистика
   const totalUrls = results.length;
   const indexedInGoogle = results.filter(r => r.google).length;
   const indexedInYandex = results.filter(r => r.yandex).length;
@@ -368,15 +309,15 @@ const Dashboard = () => {
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Дашборд</h1>
         <div className="flex space-x-2">
-          <Button 
+          <Button
             onClick={() => setIsAddModalOpen(true)}
             className="flex items-center"
             disabled={isLoading}
           >
             <RiAddLine className="mr-2 h-4 w-4" /> Добавить URL
           </Button>
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={handleRefreshAll}
             className="flex items-center"
             disabled={isLoading || results.length === 0}
@@ -401,13 +342,13 @@ const Dashboard = () => {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <DashboardCard 
-          title="Всего URL" 
-          value={totalUrls} 
+        <DashboardCard
+          title="Всего URL"
+          value={totalUrls}
           icon={<RiLinksLine className="h-4 w-4" />}
         />
-        <DashboardCard 
-          title="Индексируется в Google" 
+        <DashboardCard
+          title="Индексируется в Google"
           value={`${indexedInGoogle} из ${totalUrls}`}
           icon={<span className="font-bold">G</span>}
           trend={totalUrls > 0 ? {
@@ -415,8 +356,8 @@ const Dashboard = () => {
             isPositive: indexedInGoogle === totalUrls
           } : undefined}
         />
-        <DashboardCard 
-          title="Индексируется в Яндекс" 
+        <DashboardCard
+          title="Индексируется в Яндекс"
           value={`${indexedInYandex} из ${totalUrls}`}
           icon={<span className="font-bold">Я</span>}
           trend={totalUrls > 0 ? {
@@ -424,16 +365,16 @@ const Dashboard = () => {
             isPositive: indexedInYandex === totalUrls
           } : undefined}
         />
-        <DashboardCard 
-          title="Требуют внимания" 
-          value={notIndexedTotal} 
+        <DashboardCard
+          title="Требуют внимания"
+          value={notIndexedTotal}
           icon={<RiCheckLine className="h-4 w-4" />}
           className={notIndexedTotal > 0 ? "border-red-300" : undefined}
         />
       </div>
 
-      <IndexationTable 
-        data={results} 
+      <IndexationTable
+        data={results}
         groups={groups}
         onDelete={handleDeleteUrl}
         onCheck={handleCheckUrl}
@@ -455,8 +396,8 @@ const Dashboard = () => {
           <p className="text-gray-500">
             Добавьте URL для проверки индексации в поисковых системах.
           </p>
-          <Button 
-            onClick={() => setIsAddModalOpen(true)} 
+          <Button
+            onClick={() => setIsAddModalOpen(true)}
             className="mt-4"
           >
             <RiAddLine className="mr-2 h-4 w-4" /> Добавить первый URL
@@ -468,3 +409,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+
