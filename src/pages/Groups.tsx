@@ -15,6 +15,7 @@ import { RiAddLine } from "react-icons/ri";
 import { useToast } from "@/components/ui/use-toast";
 import UrlGroupCard from "@/components/UrlGroupCard";
 import AddUrlModal from "@/components/AddUrlModal";
+import { supabase } from "@/integrations/supabase/client"; // Импортируем клиент
 
 const Groups = () => {
   const [groups, setGroups] = useState<UrlGroup[]>([]);
@@ -24,10 +25,36 @@ const Groups = () => {
   const [newGroupName, setNewGroupName] = useState("");
   const { toast } = useToast();
 
-  // Загрузка групп при монтировании
   useEffect(() => {
     setGroups(getUrlGroups());
   }, []);
+
+  // Функция для обновления групп из Supabase
+  const fetchGroups = async () => {
+    const { data: supaGroups, error } = await supabase
+      .from("url_groups")
+      .select("id, name");
+    if (error) {
+      console.error("Ошибка загрузки групп из Supabase:", error.message);
+      return;
+    }
+    if (supaGroups) {
+      // теперь для каждой группы подтянем список url
+      const groupsWithUrls: UrlGroup[] = [];
+      for (const group of supaGroups) {
+        const { data: urls } = await supabase
+          .from("group_urls")
+          .select("url")
+          .eq("group_id", group.id);
+        groupsWithUrls.push({
+          id: group.id,
+          name: group.name,
+          urls: (urls || []).map(u => u.url)
+        });
+      }
+      setGroups(groupsWithUrls);
+    }
+  };
 
   // Создание новой группы
   const handleCreateGroup = () => {
@@ -71,21 +98,45 @@ const Groups = () => {
     }
   };
 
-  // Обработчик добавления URL в группу
   const handleAddUrl = (groupId: string) => {
     setSelectedGroupId(groupId);
     setIsAddUrlModalOpen(true);
   };
 
-  // Добавление URL в выбранную группу
-  const handleAddUrlToGroup = (urls: string[]) => {
-    // Функция добавления URL в группу будет реализована в родительском компоненте
-    // и вызвана из модального окна AddUrlModal
-    
-    toast({
-      title: "URL добавлены",
-      description: `Добавлено ${urls.length} URL в группу.`
-    });
+  // Сохраняем URL-ы в Supabase
+  const handleAddUrlToGroup = async (urls: string[], groupId?: string) => {
+    let targetGroupId = groupId || selectedGroupId;
+    if (!targetGroupId || urls.length === 0) return;
+
+    // Проверим, существуют ли такие сущности
+    try {
+      // Сохраняем URL-ы в Supabase
+      const inserts = urls.map((url) => ({
+        group_id: targetGroupId,
+        url: url.trim(),
+      }));
+      const { error } = await supabase.from("group_urls").upsert(inserts, { onConflict: "group_id,url" });
+      if (error) {
+        toast({
+          title: "Ошибка",
+          description: "При добавлении URL возникла ошибка: " + error.message,
+          variant: "destructive"
+        });
+        return;
+      }
+      await fetchGroups();
+      toast({
+        title: "URL добавлены",
+        description: `Добавлено ${urls.length} URL в группу.`,
+      });
+    } catch (e: any) {
+      toast({
+        title: "Ошибка",
+        description: "Не удалось добавить URL: " + e.message,
+        variant: "destructive"
+      });
+    }
+    setIsAddUrlModalOpen(false);
   };
 
   return (
@@ -167,3 +218,4 @@ const Groups = () => {
 };
 
 export default Groups;
+

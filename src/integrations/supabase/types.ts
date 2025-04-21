@@ -9,7 +9,101 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      api_settings: {
+        Row: {
+          check_interval: number
+          created_at: string
+          id: string
+          key: string
+          notifications_enabled: boolean
+        }
+        Insert: {
+          check_interval?: number
+          created_at?: string
+          id?: string
+          key: string
+          notifications_enabled?: boolean
+        }
+        Update: {
+          check_interval?: number
+          created_at?: string
+          id?: string
+          key?: string
+          notifications_enabled?: boolean
+        }
+        Relationships: []
+      }
+      group_urls: {
+        Row: {
+          created_at: string
+          group_id: string
+          id: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: string
+          id?: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string
+          id?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_urls_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "url_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      indexation_results: {
+        Row: {
+          date: string
+          google: boolean
+          id: string
+          url: string
+          yandex: boolean
+        }
+        Insert: {
+          date?: string
+          google: boolean
+          id?: string
+          url: string
+          yandex: boolean
+        }
+        Update: {
+          date?: string
+          google?: boolean
+          id?: string
+          url?: string
+          yandex?: boolean
+        }
+        Relationships: []
+      }
+      url_groups: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
