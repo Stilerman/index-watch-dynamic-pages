@@ -5,17 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { UrlGroup } from "@/types";
-import { 
-  getUrlGroups, 
-  addUrlGroup, 
-  updateUrlGroup, 
-  deleteUrlGroup 
-} from "@/services/storageService";
 import { RiAddLine } from "react-icons/ri";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import UrlGroupCard from "@/components/UrlGroupCard";
 import AddUrlModal from "@/components/AddUrlModal";
-import { supabase } from "@/integrations/supabase/client"; // Импортируем клиент
+import { supabase } from "@/integrations/supabase/client";
 
 const Groups = () => {
   const [groups, setGroups] = useState<UrlGroup[]>([]);
@@ -26,75 +20,161 @@ const Groups = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    setGroups(getUrlGroups());
+    fetchGroups();
   }, []);
 
-  // Функция для обновления групп из Supabase
+  // Функция для получения групп из Supabase
   const fetchGroups = async () => {
-    const { data: supaGroups, error } = await supabase
-      .from("url_groups")
-      .select("id, name");
-    if (error) {
-      console.error("Ошибка загрузки групп из Supabase:", error.message);
-      return;
-    }
-    if (supaGroups) {
-      // теперь для каждой группы подтянем список url
-      const groupsWithUrls: UrlGroup[] = [];
-      for (const group of supaGroups) {
-        const { data: urls } = await supabase
-          .from("group_urls")
-          .select("url")
-          .eq("group_id", group.id);
-        groupsWithUrls.push({
-          id: group.id,
-          name: group.name,
-          urls: (urls || []).map(u => u.url)
+    try {
+      const { data: supaGroups, error } = await supabase
+        .from("url_groups")
+        .select("id, name");
+      if (error) {
+        console.error("Ошибка загрузки групп из Supabase:", error.message);
+        toast({
+          title: "Ошибка",
+          description: `Не удалось загрузить группы: ${error.message}`,
+          variant: "destructive"
         });
+        return;
       }
-      setGroups(groupsWithUrls);
+      if (supaGroups) {
+        // Теперь для каждой группы подтянем список url
+        const groupsWithUrls: UrlGroup[] = [];
+        for (const group of supaGroups) {
+          const { data: urls, error: urlsError } = await supabase
+            .from("group_urls")
+            .select("url")
+            .eq("group_id", group.id);
+            
+          if (urlsError) {
+            console.error(`Ошибка загрузки URL для группы ${group.id}:`, urlsError.message);
+          }
+            
+          groupsWithUrls.push({
+            id: group.id,
+            name: group.name,
+            urls: urls ? urls.map(u => u.url) : []
+          });
+        }
+        setGroups(groupsWithUrls);
+      }
+    } catch (e: any) {
+      console.error("Ошибка при загрузке групп:", e);
+      toast({
+        title: "Ошибка",
+        description: `Произошла ошибка при загрузке групп: ${e.message}`,
+        variant: "destructive"
+      });
     }
   };
 
   // Создание новой группы
-  const handleCreateGroup = () => {
+  const handleCreateGroup = async () => {
     if (newGroupName.trim() !== "") {
-      addUrlGroup(newGroupName);
-      setGroups(getUrlGroups());
-      setNewGroupName("");
-      setIsCreateModalOpen(false);
-      
-      toast({
-        title: "Группа создана",
-        description: `Группа "${newGroupName}" успешно создана.`
-      });
+      try {
+        const { data, error } = await supabase
+          .from("url_groups")
+          .insert({ name: newGroupName.trim() })
+          .select()
+          .single();
+          
+        if (error) {
+          toast({
+            title: "Ошибка",
+            description: `Не удалось создать группу: ${error.message}`,
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        // Добавляем новую группу в локальное состояние
+        setGroups([...groups, { id: data.id, name: data.name, urls: [] }]);
+        setNewGroupName("");
+        setIsCreateModalOpen(false);
+        
+        toast({
+          title: "Группа создана",
+          description: `Группа "${newGroupName}" успешно создана.`
+        });
+      } catch (e: any) {
+        toast({
+          title: "Ошибка",
+          description: `Не удалось создать группу: ${e.message}`,
+          variant: "destructive"
+        });
+      }
     }
   };
 
   // Обновление группы
-  const handleUpdateGroup = (id: string, name: string) => {
-    updateUrlGroup(id, name);
-    setGroups(getUrlGroups());
-    
-    toast({
-      title: "Группа обновлена",
-      description: `Название группы изменено на "${name}".`
-    });
+  const handleUpdateGroup = async (id: string, name: string) => {
+    try {
+      const { error } = await supabase
+        .from("url_groups")
+        .update({ name })
+        .eq("id", id);
+        
+      if (error) {
+        toast({
+          title: "Ошибка",
+          description: `Не удалось обновить группу: ${error.message}`,
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Обновляем группу в локальном состоянии
+      setGroups(groups.map(g => g.id === id ? { ...g, name } : g));
+      
+      toast({
+        title: "Группа обновлена",
+        description: `Название группы изменено на "${name}".`
+      });
+    } catch (e: any) {
+      toast({
+        title: "Ошибка",
+        description: `Не удалось обновить группу: ${e.message}`,
+        variant: "destructive"
+      });
+    }
   };
 
   // Удаление группы
-  const handleDeleteGroup = (id: string) => {
+  const handleDeleteGroup = async (id: string) => {
     const group = groups.find(g => g.id === id);
     if (!group) return;
     
     if (window.confirm(`Вы уверены, что хотите удалить группу "${group.name}"? URL страниц останутся в системе.`)) {
-      deleteUrlGroup(id);
-      setGroups(getUrlGroups());
-      
-      toast({
-        title: "Группа удалена",
-        description: `Группа "${group.name}" успешно удалена.`
-      });
+      try {
+        const { error } = await supabase
+          .from("url_groups")
+          .delete()
+          .eq("id", id);
+          
+        if (error) {
+          toast({
+            title: "Ошибка",
+            description: `Не удалось удалить группу: ${error.message}`,
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        // Удаляем группу из локального состояния
+        setGroups(groups.filter(g => g.id !== id));
+        
+        toast({
+          title: "Группа удалена",
+          description: `Группа "${group.name}" успешно удалена.`
+        });
+      } catch (e: any) {
+        toast({
+          title: "Ошибка",
+          description: `Не удалось удалить группу: ${e.message}`,
+          variant: "destructive"
+        });
+      }
     }
   };
 
@@ -103,20 +183,41 @@ const Groups = () => {
     setIsAddUrlModalOpen(true);
   };
 
-  // Сохраняем URL-ы в Supabase
+  // Добавляем URL в группу
   const handleAddUrlToGroup = async (urls: string[], groupId?: string) => {
     let targetGroupId = groupId || selectedGroupId;
     if (!targetGroupId || urls.length === 0) return;
 
-    // Проверим, существуют ли такие сущности
     try {
+      // Проверяем, существует ли такая группа
+      const { data: existingGroup, error: groupCheckError } = await supabase
+        .from("url_groups")
+        .select("id")
+        .eq("id", targetGroupId)
+        .single();
+        
+      if (groupCheckError || !existingGroup) {
+        console.error("Ошибка: Группа не найдена", groupCheckError);
+        toast({
+          title: "Ошибка",
+          description: "Выбранная группа не существует",
+          variant: "destructive"
+        });
+        return;
+      }
+      
       // Сохраняем URL-ы в Supabase
       const inserts = urls.map((url) => ({
         group_id: targetGroupId,
         url: url.trim(),
       }));
-      const { error } = await supabase.from("group_urls").upsert(inserts, { onConflict: "group_id,url" });
+      
+      const { error } = await supabase
+        .from("group_urls")
+        .upsert(inserts, { onConflict: "group_id,url" });
+        
       if (error) {
+        console.error("Ошибка при добавлении URL:", error);
         toast({
           title: "Ошибка",
           description: "При добавлении URL возникла ошибка: " + error.message,
@@ -124,12 +225,16 @@ const Groups = () => {
         });
         return;
       }
+      
+      // Обновляем список групп
       await fetchGroups();
+      
       toast({
         title: "URL добавлены",
         description: `Добавлено ${urls.length} URL в группу.`,
       });
     } catch (e: any) {
+      console.error("Ошибка при добавлении URL:", e);
       toast({
         title: "Ошибка",
         description: "Не удалось добавить URL: " + e.message,
@@ -218,4 +323,3 @@ const Groups = () => {
 };
 
 export default Groups;
-
