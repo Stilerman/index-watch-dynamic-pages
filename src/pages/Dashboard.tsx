@@ -95,11 +95,6 @@ const Dashboard = () => {
     }
   };
 
-  const totalUrls = results.length;
-  const indexedInGoogle = results.filter(r => r.google).length;
-  const indexedInYandex = results.filter(r => r.yandex).length;
-  const notIndexedTotal = results.filter(r => !r.google || !r.yandex).length;
-
   const handleAddUrls = async (urls: string[], groupIdOrName?: string) => {
     try {
       setIsLoading(true);
