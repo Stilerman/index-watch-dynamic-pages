@@ -42,20 +42,24 @@ const Groups = () => {
         // Теперь для каждой группы подтянем список url
         const groupsWithUrls: UrlGroup[] = [];
         for (const group of supaGroups) {
-          const { data: urls, error: urlsError } = await supabase
-            .from("group_urls")
-            .select("url")
-            .eq("group_id", group.id);
-            
-          if (urlsError) {
-            console.error(`Ошибка загрузки URL для группы ${group.id}:`, urlsError.message);
+          try {
+            const { data: urls, error: urlsError } = await supabase
+              .from("group_urls")
+              .select("url")
+              .eq("group_id", group.id);
+              
+            if (urlsError) {
+              console.error(`Ошибка загрузки URL для группы ${group.id}:`, urlsError.message);
+            }
+              
+            groupsWithUrls.push({
+              id: group.id,
+              name: group.name,
+              urls: urls ? urls.map(u => u.url) : []
+            });
+          } catch (innerError: any) {
+            console.error(`Ошибка при обработке группы ${group.id}:`, innerError);
           }
-            
-          groupsWithUrls.push({
-            id: group.id,
-            name: group.name,
-            urls: urls ? urls.map(u => u.url) : []
-          });
         }
         setGroups(groupsWithUrls);
       }
@@ -147,6 +151,17 @@ const Groups = () => {
     
     if (window.confirm(`Вы уверены, что хотите удалить группу "${group.name}"? URL страниц останутся в системе.`)) {
       try {
+        // Сначала удаляем связи с URL
+        const { error: urlsError } = await supabase
+          .from("group_urls")
+          .delete()
+          .eq("group_id", id);
+          
+        if (urlsError) {
+          console.error("Ошибка при удалении URL из группы:", urlsError);
+        }
+        
+        // Затем удаляем саму группу
         const { error } = await supabase
           .from("url_groups")
           .delete()
@@ -184,26 +199,41 @@ const Groups = () => {
   };
 
   // Добавляем URL в группу
-  const handleAddUrlToGroup = async (urls: string[], groupId?: string) => {
-    let targetGroupId = groupId || selectedGroupId;
-    if (!targetGroupId || urls.length === 0) return;
-
+  const handleAddUrlToGroup = async (urls: string[], groupIdOrName?: string) => {
     try {
-      // Проверяем, существует ли такая группа
-      const { data: existingGroup, error: groupCheckError } = await supabase
-        .from("url_groups")
-        .select("id")
-        .eq("id", targetGroupId)
-        .single();
-        
-      if (groupCheckError || !existingGroup) {
-        console.error("Ошибка: Группа не найдена", groupCheckError);
+      // Если передана строка, она может быть либо ID существующей группы, либо названием новой группы
+      let targetGroupId = groupIdOrName || selectedGroupId;
+      
+      if (!targetGroupId || urls.length === 0) {
         toast({
           title: "Ошибка",
-          description: "Выбранная группа не существует",
+          description: "Необходимо указать группу и URL",
           variant: "destructive"
         });
         return;
+      }
+      
+      // Проверяем, существует ли такая группа
+      let existingGroup = groups.find(g => g.id === targetGroupId);
+      
+      // Если группы нет, создаём новую
+      if (!existingGroup) {
+        const { data: newGroup, error: createError } = await supabase
+          .from("url_groups")
+          .insert({ name: targetGroupId })
+          .select()
+          .single();
+          
+        if (createError) {
+          toast({
+            title: "Ошибка",
+            description: `Не удалось создать группу: ${createError.message}`,
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        targetGroupId = newGroup.id;
       }
       
       // Сохраняем URL-ы в Supabase
@@ -214,7 +244,7 @@ const Groups = () => {
       
       const { error } = await supabase
         .from("group_urls")
-        .upsert(inserts, { onConflict: "group_id,url" });
+        .upsert(inserts, { onConflict: 'group_id,url' });
         
       if (error) {
         console.error("Ошибка при добавлении URL:", error);
