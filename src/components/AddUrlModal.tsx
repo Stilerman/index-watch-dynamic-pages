@@ -11,7 +11,7 @@ import { UrlGroup } from "@/types";
 interface AddUrlModalProps {
   open: boolean;
   onClose: () => void;
-  onAdd: (urls: string[], groupId?: string) => void;
+  onAdd: (urls: string[], groupIdOrName?: string) => void;
   groups: UrlGroup[];
 }
 
@@ -22,16 +22,17 @@ const AddUrlModal = ({ open, onClose, onAdd, groups }: AddUrlModalProps) => {
   const [isNewGroup, setIsNewGroup] = useState(false);
 
   const handleSubmit = () => {
-    const urlList = urls.split("\n").filter((url) => url.trim() !== "");
-    
-    if (isNewGroup && newGroupName) {
-      // Создание новой группы обрабатывается в родительском компоненте
-      onAdd(urlList, newGroupName);
-    } else {
+    const urlList = urls.split("\n").map((url) => url.trim()).filter((url) => url !== "");
+    if (urlList.length === 0) return;
+
+    if (isNewGroup && newGroupName.trim()) {
+      onAdd(urlList, newGroupName.trim());
+    } else if (selectedGroup) {
       onAdd(urlList, selectedGroup);
+    } else {
+      onAdd(urlList);
     }
-    
-    // Сброс формы
+
     setUrls("");
     setSelectedGroup("");
     setNewGroupName("");
@@ -77,7 +78,6 @@ const AddUrlModal = ({ open, onClose, onAdd, groups }: AddUrlModalProps) => {
                   ))}
                 </SelectContent>
               </Select>
-              
               <Button 
                 variant="outline" 
                 onClick={() => setIsNewGroup(!isNewGroup)}

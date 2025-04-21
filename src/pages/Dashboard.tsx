@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import DashboardCard from "@/components/DashboardCard";
@@ -17,13 +16,11 @@ const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  // Загрузка данных при монтировании
   useEffect(() => {
     fetchIndexationResults();
     fetchGroups();
   }, []);
 
-  // Получение результатов индексации из Supabase
   const fetchIndexationResults = async () => {
     try {
       const { data: indexationResults, error } = await supabase
@@ -51,7 +48,6 @@ const Dashboard = () => {
     }
   };
 
-  // Загрузка групп URL из Supabase
   const fetchGroups = async () => {
     try {
       const { data: supaGroups, error } = await supabase
@@ -69,7 +65,6 @@ const Dashboard = () => {
       }
 
       if (supaGroups) {
-        // Для каждой группы подтягиваем список URL
         const groupsWithUrls: UrlGroup[] = [];
         for (const group of supaGroups) {
           const { data: urls, error: urlsError } = await supabase
@@ -99,26 +94,25 @@ const Dashboard = () => {
     }
   };
 
-  // Статистика для карточек
   const totalUrls = results.length;
   const indexedInGoogle = results.filter(r => r.google).length;
   const indexedInYandex = results.filter(r => r.yandex).length;
   const notIndexedTotal = results.filter(r => !r.google || !r.yandex).length;
 
-  // Функция для добавления URL
-  const handleAddUrls = async (urls: string[], groupName?: string) => {
+  const handleAddUrls = async (urls: string[], groupIdOrName?: string) => {
     try {
       setIsLoading(true);
-      
-      // Если передано имя группы, создаем новую группу в Supabase
       let groupId = "";
-      if (groupName && groupName.trim() !== "") {
+
+      const existingGroup = groups.find(g => g.id === groupIdOrName);
+
+      if (groupIdOrName && !existingGroup) {
         const { data: newGroup, error } = await supabase
           .from("url_groups")
-          .insert({ name: groupName.trim() })
+          .insert({ name: groupIdOrName })
           .select()
           .single();
-          
+
         if (error) {
           toast({
             title: "Ошибка",
@@ -128,18 +122,15 @@ const Dashboard = () => {
           setIsLoading(false);
           return;
         }
-        
         groupId = newGroup.id;
-        // Обновляем список групп
-        fetchGroups();
+      } else if (existingGroup) {
+        groupId = existingGroup.id;
       }
-      
-      // Проверяем индексацию для всех URL
+
       const newResults = await batchCheckIndexation(urls);
-      
-      // Сохраняем результаты в Supabase
+
       for (const result of newResults) {
-        const { error } = await supabase
+        await supabase
           .from("indexation_results")
           .upsert({
             url: result.url,
@@ -147,36 +138,21 @@ const Dashboard = () => {
             yandex: result.yandex,
             date: result.date
           }, { onConflict: 'url' });
-          
-        if (error) {
-          console.error("Ошибка сохранения индексации:", error);
-        }
       }
-      
-      // Обновляем состояние
-      fetchIndexationResults();
-      
-      // Если был указан ID группы, добавляем URLs в эту группу
+
       if (groupId) {
         const urlInserts = urls.map(url => ({
           group_id: groupId,
           url: url.trim()
         }));
-        
-        const { error } = await supabase
+        await supabase
           .from("group_urls")
           .upsert(urlInserts, { onConflict: 'group_id,url' });
-          
-        if (error) {
-          console.error("Ошибка добавления URL в группу:", error);
-          toast({
-            title: "Ошибка",
-            description: "Не удалось добавить URL в группу: " + error.message,
-            variant: "destructive"
-          });
-        }
       }
-      
+
+      await fetchIndexationResults();
+      await fetchGroups();
+
       toast({
         title: "URL добавлены",
         description: `Добавлено ${newResults.length} URL для мониторинга.`
@@ -192,7 +168,6 @@ const Dashboard = () => {
     }
   };
 
-  // Функция для удаления URL
   const handleDeleteUrl = async (url: string) => {
     try {
       const { error } = await supabase
@@ -204,7 +179,6 @@ const Dashboard = () => {
         throw new Error(error.message);
       }
       
-      // Удаляем URL также из всех групп
       const { error: groupUrlError } = await supabase
         .from("group_urls")
         .delete()
@@ -214,7 +188,6 @@ const Dashboard = () => {
         console.error("Ошибка при удалении URL из групп:", groupUrlError);
       }
       
-      // Обновляем состояние
       setResults(results.filter(r => r.url !== url));
       fetchGroups();
       
@@ -231,14 +204,12 @@ const Dashboard = () => {
     }
   };
 
-  // Функция для проверки индексации одного URL
   const handleCheckUrl = async (url: string) => {
     try {
       setIsLoading(true);
       const [result] = await batchCheckIndexation([url]);
       
       if (result) {
-        // Обновляем результат в Supabase
         const { error } = await supabase
           .from("indexation_results")
           .upsert({
@@ -252,7 +223,6 @@ const Dashboard = () => {
           throw new Error(error.message);
         }
         
-        // Обновляем состояние
         fetchIndexationResults();
         
         toast({
@@ -271,7 +241,6 @@ const Dashboard = () => {
     }
   };
 
-  // Функция для массовой проверки всех URL
   const handleRefreshAll = async () => {
     try {
       if (results.length === 0) {
@@ -286,7 +255,6 @@ const Dashboard = () => {
       const urls = results.map(r => r.url);
       const newResults = await batchCheckIndexation(urls);
       
-      // Обновляем результаты в Supabase
       for (const result of newResults) {
         const { error } = await supabase
           .from("indexation_results")
@@ -302,7 +270,6 @@ const Dashboard = () => {
         }
       }
       
-      // Обновляем состояние
       fetchIndexationResults();
       
       toast({
