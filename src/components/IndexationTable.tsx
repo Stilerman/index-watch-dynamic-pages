@@ -26,21 +26,18 @@ const IndexationTable = ({ data, groups, onDelete, onCheck }: IndexationTablePro
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [filteredData, setFilteredData] = useState<IndexationResult[]>(data);
-  
-  // Update filtered data whenever data, searchTerm, or selectedGroup changes
+
   useEffect(() => {
     const newFilteredData = data.filter((item) => {
       const matchesSearch = item.url.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesGroup = selectedGroup 
-        ? groups.find(g => g.id === selectedGroup)?.urls.includes(item.url) 
+      const matchesGroup = selectedGroup
+        ? groups.find(g => g.id === selectedGroup)?.urls.includes(item.url)
         : true;
       return matchesSearch && matchesGroup;
     });
-    
     setFilteredData(newFilteredData);
   }, [data, searchTerm, selectedGroup, groups]);
 
-  // Определение группы для URL
   const getGroupName = (url: string): string => {
     for (const group of groups) {
       if (group.urls.includes(url)) {
@@ -63,8 +60,8 @@ const IndexationTable = ({ data, groups, onDelete, onCheck }: IndexationTablePro
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline">
-                {selectedGroup 
-                  ? `Группа: ${groups.find(g => g.id === selectedGroup)?.name}` 
+                {selectedGroup
+                  ? `Группа: ${groups.find(g => g.id === selectedGroup)?.name}`
                   : "Все группы"}
               </Button>
             </DropdownMenuTrigger>
@@ -73,8 +70,8 @@ const IndexationTable = ({ data, groups, onDelete, onCheck }: IndexationTablePro
                 Все группы
               </DropdownMenuItem>
               {groups.map((group) => (
-                <DropdownMenuItem 
-                  key={group.id} 
+                <DropdownMenuItem
+                  key={group.id}
                   onClick={() => setSelectedGroup(group.id)}
                 >
                   {group.name}
@@ -83,12 +80,11 @@ const IndexationTable = ({ data, groups, onDelete, onCheck }: IndexationTablePro
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        
         <div className="text-sm text-gray-500">
           Показано: {filteredData.length} из {data.length}
         </div>
       </div>
-      
+
       <div className="border rounded-lg overflow-hidden">
         <Table>
           <TableHeader>
@@ -98,6 +94,7 @@ const IndexationTable = ({ data, groups, onDelete, onCheck }: IndexationTablePro
               <TableHead>Google</TableHead>
               <TableHead>Яндекс</TableHead>
               <TableHead>Последняя проверка</TableHead>
+              <TableHead>Проверить</TableHead>
               <TableHead></TableHead>
             </TableRow>
           </TableHeader>
@@ -106,9 +103,9 @@ const IndexationTable = ({ data, groups, onDelete, onCheck }: IndexationTablePro
               filteredData.map((item) => (
                 <TableRow key={item.url}>
                   <TableCell className="font-medium truncate max-w-xs">
-                    <a 
-                      href={item.url} 
-                      target="_blank" 
+                    <a
+                      href={item.url}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="hover:underline text-blue-600"
                     >
@@ -117,7 +114,7 @@ const IndexationTable = ({ data, groups, onDelete, onCheck }: IndexationTablePro
                   </TableCell>
                   <TableCell>{getGroupName(item.url)}</TableCell>
                   <TableCell>
-                    <Badge 
+                    <Badge
                       variant={item.google ? "default" : "destructive"}
                       className={item.google ? "bg-green-100 text-green-800" : ""}
                     >
@@ -125,7 +122,7 @@ const IndexationTable = ({ data, groups, onDelete, onCheck }: IndexationTablePro
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge 
+                    <Badge
                       variant={item.yandex ? "default" : "destructive"}
                       className={item.yandex ? "bg-green-100 text-green-800" : ""}
                     >
@@ -134,6 +131,15 @@ const IndexationTable = ({ data, groups, onDelete, onCheck }: IndexationTablePro
                   </TableCell>
                   <TableCell>
                     {format(new Date(item.date), "dd MMM yyyy, HH:mm", { locale: ru })}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onCheck(item.url)}
+                    >
+                      Проверить
+                    </Button>
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -156,8 +162,8 @@ const IndexationTable = ({ data, groups, onDelete, onCheck }: IndexationTablePro
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-6 text-gray-500">
-                  {searchTerm || selectedGroup 
+                <TableCell colSpan={7} className="text-center py-6 text-gray-500">
+                  {searchTerm || selectedGroup
                     ? "Ничего не найдено. Попробуйте изменить параметры поиска."
                     : "Нет данных. Добавьте URL для начала мониторинга."}
                 </TableCell>
@@ -171,3 +177,4 @@ const IndexationTable = ({ data, groups, onDelete, onCheck }: IndexationTablePro
 };
 
 export default IndexationTable;
+
