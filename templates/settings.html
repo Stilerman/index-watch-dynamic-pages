@@ -1,0 +1,56 @@
+
+{% extends "layout.html" %}
+
+{% block title %}Настройки{% endblock %}
+
+{% block content %}
+<div class="settings-page">
+    <div class="page-header">
+        <h1>Настройки</h1>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3>Настройки API</h3>
+            <p class="card-description">Настройте параметры работы с API для проверки индексации.</p>
+        </div>
+        <div class="card-content">
+            <form action="{{ url_for('settings') }}" method="post">
+                <div class="form-group">
+                    <label for="api_key">API Ключ</label>
+                    <input type="password" id="api_key" name="api_key" value="{{ settings.key }}" placeholder="Введите ваш API ключ">
+                    <p class="hint">
+                        API ключ можно получить на сайте 
+                        <a href="https://arsenkin.ru/tools/blog/api-indexation/" target="_blank" rel="noopener noreferrer">arsenkin.ru</a>
+                    </p>
+                </div>
+                
+                <div class="form-group">
+                    <label for="check_interval">Интервал проверки (часы)</label>
+                    <input type="number" id="check_interval" name="check_interval" min="1" max="168" value="{{ settings.check_interval }}">
+                    <p class="hint">
+                        Как часто система будет проверять индексацию URL.
+                    </p>
+                </div>
+                
+                <div class="form-group toggle-group">
+                    <div>
+                        <label for="notifications_enabled">Уведомления</label>
+                        <p class="hint">
+                            Получать уведомления о вылете страниц из индекса.
+                        </p>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="notifications_enabled" name="notifications_enabled" {% if settings.notifications_enabled %}checked{% endif %}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="btn primary">Сохранить настройки</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

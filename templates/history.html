@@ -1,0 +1,144 @@
+
+{% extends "layout.html" %}
+
+{% block title %}История{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="history-page">
+    <div class="page-header">
+        <h1>История индексации</h1>
+    </div>
+
+    {% if history %}
+    <div class="card">
+        <div class="card-content">
+            <div class="form-group">
+                <label for="url-select">Выберите URL</label>
+                <select id="url-select" class="select">
+                    {% for item in history %}
+                    <option value="{{ loop.index0 }}">{{ item.url }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="card history-chart-card">
+        <div class="card-header">
+            <h3>История индексации: <span id="selected-url">{{ history[0].url }}</span></h3>
+        </div>
+        <div class="card-content">
+            <div class="chart-container">
+                <canvas id="indexation-chart"></canvas>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-state-container">
+        <div class="empty-state-icon">⏱️</div>
+        <h2>Нет данных истории</h2>
+        <p>Добавьте URL и запустите проверку индексации, чтобы начать отслеживать историю.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if history %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Преобразуем данные из Jinja в JavaScript
+    const history = {{ history|tojson|safe }};
+    let chart;
+
+    function createChart(historyItem) {
+        const ctx = document.getElementById('indexation-chart').getContext('2d');
+        
+        // Сортируем результаты по дате
+        const sortedResults = [...historyItem.results].sort((a, b) => new Date(a.date) - new Date(b.date));
+        
+        // Подготовка данных для графика
+        const labels = sortedResults.map(r => new Date(r.date).toLocaleDateString('ru-RU'));
+        
+        const data = {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Google',
+                    data: sortedResults.map(r => r.google ? 1 : 0),
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    tension: 0.2,
+                    fill: false
+                },
+                {
+                    label: 'Яндекс',
+                    data: sortedResults.map(r => r.yandex ? 1 : 0),
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                    tension: 0.2,
+                    fill: false
+                }
+            ]
+        };
+        
+        const options = {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    min: 0,
+                    max: 1,
+                    ticks: {
+                        callback: function(value) {
+                            return value === 1 ? 'Да' : 'Нет';
+                        }
+                    }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const value = context.raw;
+                            return `${context.dataset.label}: ${value === 1 ? 'Проиндексировано' : 'Не проиндексировано'}`;
+                        }
+                    }
+                }
+            }
+        };
+        
+        if (chart) {
+            chart.destroy();
+        }
+        
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: data,
+            options: options
+        });
+    }
+    
+    // Обработка изменения выбранного URL
+    const urlSelect = document.getElementById('url-select');
+    const selectedUrlElement = document.getElementById('selected-url');
+    
+    urlSelect.addEventListener('change', function() {
+        const index = this.value;
+        const selectedHistory = history[index];
+        selectedUrlElement.textContent = selectedHistory.url;
+        createChart(selectedHistory);
+    });
+    
+    // Инициализация с первым URL
+    if (history.length > 0) {
+        createChart(history[0]);
+    }
+});
+</script>
+{% endif %}
+{% endblock %}

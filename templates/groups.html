@@ -1,0 +1,355 @@
+
+{% extends "layout.html" %}
+
+{% block title %}Группы URL{% endblock %}
+
+{% block content %}
+<div class="groups-page">
+    <div class="page-header">
+        <h1>Группы URL</h1>
+        <div class="actions">
+            <button id="add-group-btn" class="btn primary">
+                <span class="icon">➕</span> Добавить группу
+            </button>
+        </div>
+    </div>
+
+    {% if groups %}
+    <div class="groups-grid">
+        {% for group in groups %}
+        <div class="card group-card" data-group-id="{{ group.id }}">
+            <div class="card-header">
+                <h3>{{ group.name }}</h3>
+                <div class="actions">
+                    <button class="btn icon-btn edit-group" title="Редактировать">✏️</button>
+                    <button class="btn icon-btn delete-group" title="Удалить">🗑️</button>
+                </div>
+            </div>
+            <div class="card-content">
+                <div class="group-meta">
+                    <span class="badge outline">{{ group.urls|length }} URL</span>
+                    <button class="btn sm outline add-url-to-group">
+                        <span class="icon">➕</span> Добавить URL
+                    </button>
+                </div>
+                <div class="url-list">
+                    {% if group.urls %}
+                        <ul>
+                            {% for url in group.urls[:5] %}
+                            <li title="{{ url }}">{{ url }}</li>
+                            {% endfor %}
+                            {% if group.urls|length > 5 %}
+                            <li class="more-urls">и еще {{ group.urls|length - 5 }} URL...</li>
+                            {% endif %}
+                        </ul>
+                    {% else %}
+                        <p class="no-urls">Нет URL в этой группе</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state-container">
+        <div class="empty-state-icon">📁</div>
+        <h2>Нет групп URL</h2>
+        <p>Создайте группы для организации ваших URL.</p>
+        <button id="add-group-empty-btn" class="btn primary">Добавить группу</button>
+    </div>
+    {% endif %}
+
+    <!-- Модальное окно для редактирования группы -->
+    <div id="edit-group-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Редактировать группу</h2>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="group-name">Название группы</label>
+                    <input type="text" id="group-name" placeholder="Введите название группы">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn outline" id="cancel-edit-group">Отмена</button>
+                <button class="btn primary" id="save-group">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для добавления группы -->
+    <div id="add-group-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Добавить группу</h2>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="new-group-name">Название группы</label>
+                    <input type="text" id="new-group-name" placeholder="Введите название группы">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn outline" id="cancel-add-group">Отмена</button>
+                <button class="btn primary" id="create-group">Создать</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для добавления URL в группу -->
+    <div id="add-url-to-group-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Добавить URL в группу</h2>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="urls-for-group">URL адреса (по одному на строку)</label>
+                    <textarea id="urls-for-group" rows="5" placeholder="https://example.com/page1&#10;https://example.com/page2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn outline" id="cancel-add-url-to-group">Отмена</button>
+                <button class="btn primary" id="confirm-add-url-to-group">Добавить</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Функции для работы с модальными окнами
+    function openModal(modal) {
+        modal.style.display = 'flex';
+        document.body.classList.add('modal-open');
+    }
+    
+    function closeModal(modal) {
+        modal.style.display = 'none';
+        document.body.classList.remove('modal-open');
+    }
+    
+    // Редактирование группы
+    const editGroupModal = document.getElementById('edit-group-modal');
+    const groupNameInput = document.getElementById('group-name');
+    let currentGroupId = null;
+    
+    document.querySelectorAll('.edit-group').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const groupCard = this.closest('.group-card');
+            const groupId = groupCard.getAttribute('data-group-id');
+            const groupName = groupCard.querySelector('.card-header h3').textContent;
+            
+            currentGroupId = groupId;
+            groupNameInput.value = groupName;
+            
+            openModal(editGroupModal);
+        });
+    });
+    
+    document.querySelectorAll('.close-modal, #cancel-edit-group').forEach(element => {
+        element.addEventListener('click', function() {
+            closeModal(editGroupModal);
+        });
+    });
+    
+    // Сохранение отредактированной группы
+    document.getElementById('save-group').addEventListener('click', function() {
+        const newName = groupNameInput.value.trim();
+        if (!newName || !currentGroupId) return;
+        
+        fetch('/api/update_group', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                id: currentGroupId,
+                name: newName
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast('success', data.message);
+                
+                // Обновляем название группы на странице
+                const groupCard = document.querySelector(`.group-card[data-group-id="${currentGroupId}"]`);
+                if (groupCard) {
+                    groupCard.querySelector('.card-header h3').textContent = newName;
+                }
+                
+                closeModal(editGroupModal);
+            } else {
+                showToast('error', data.message || 'Произошла ошибка');
+            }
+        })
+        .catch(error => {
+            showToast('error', 'Ошибка при обновлении группы: ' + error.message);
+        });
+    });
+    
+    // Удаление группы
+    document.querySelectorAll('.delete-group').forEach(btn => {
+        btn.addEventListener('click', function() {
+            if (confirm('Вы уверены, что хотите удалить эту группу? URL из группы не будут удалены из мониторинга.')) {
+                const groupCard = this.closest('.group-card');
+                const groupId = groupCard.getAttribute('data-group-id');
+                
+                fetch('/api/delete_group', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ id: groupId })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast('success', data.message);
+                        groupCard.style.opacity = '0';
+                        setTimeout(() => {
+                            groupCard.remove();
+                            
+                            // Проверяем, остались ли еще группы
+                            if (document.querySelectorAll('.group-card').length === 0) {
+                                window.location.reload(); // Перезагружаем страницу для отображения пустого состояния
+                            }
+                        }, 300);
+                    } else {
+                        showToast('error', data.message || 'Произошла ошибка');
+                    }
+                })
+                .catch(error => {
+                    showToast('error', 'Ошибка при удалении группы: ' + error.message);
+                });
+            }
+        });
+    });
+    
+    // Добавление новой группы
+    const addGroupModal = document.getElementById('add-group-modal');
+    const addGroupBtns = document.querySelectorAll('#add-group-btn, #add-group-empty-btn');
+    
+    addGroupBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            openModal(addGroupModal);
+        });
+    });
+    
+    document.querySelectorAll('.close-modal, #cancel-add-group').forEach(element => {
+        element.addEventListener('click', function() {
+            closeModal(addGroupModal);
+        });
+    });
+    
+    document.getElementById('create-group').addEventListener('click', function() {
+        const newGroupName = document.getElementById('new-group-name').value.trim();
+        if (!newGroupName) return;
+        
+        fetch('/api/add_group', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ name: newGroupName })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast('success', data.message);
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                showToast('error', data.message || 'Произошла ошибка');
+            }
+        })
+        .catch(error => {
+            showToast('error', 'Ошибка при создании группы: ' + error.message);
+        })
+        .finally(() => {
+            closeModal(addGroupModal);
+        });
+    });
+    
+    // Добавление URL в группу
+    const addUrlToGroupModal = document.getElementById('add-url-to-group-modal');
+    const urlsForGroupTextarea = document.getElementById('urls-for-group');
+    
+    document.querySelectorAll('.add-url-to-group').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const groupCard = this.closest('.group-card');
+            currentGroupId = groupCard.getAttribute('data-group-id');
+            urlsForGroupTextarea.value = '';
+            
+            openModal(addUrlToGroupModal);
+        });
+    });
+    
+    document.querySelectorAll('.close-modal, #cancel-add-url-to-group').forEach(element => {
+        element.addEventListener('click', function() {
+            closeModal(addUrlToGroupModal);
+        });
+    });
+    
+    document.getElementById('confirm-add-url-to-group').addEventListener('click', function() {
+        const urls = urlsForGroupTextarea.value.split('\n').filter(url => url.trim() !== '');
+        if (urls.length === 0 || !currentGroupId) return;
+        
+        fetch('/api/add_urls', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                urls: urls,
+                groupIdOrName: currentGroupId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast('success', data.message);
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                showToast('error', data.message || 'Произошла ошибка');
+            }
+        })
+        .catch(error => {
+            showToast('error', 'Ошибка при добавлении URL: ' + error.message);
+        })
+        .finally(() => {
+            closeModal(addUrlToGroupModal);
+        });
+    });
+    
+    // Функция для показа уведомлений
+    function showToast(type, message) {
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.classList.add('show');
+        }, 10);
+        
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                document.body.removeChild(toast);
+            }, 300);
+        }, 3000);
+    }
+});
+</script>
+{% endblock %}

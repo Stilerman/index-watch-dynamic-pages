@@ -1,0 +1,491 @@
+
+{% extends "layout.html" %}
+
+{% block title %}Дашборд{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="page-header">
+        <h1>Дашборд</h1>
+        <div class="actions">
+            <button id="add-url-btn" class="btn primary">
+                <span class="icon">➕</span> Добавить URL
+            </button>
+            <button id="refresh-all-btn" class="btn outline" {% if total_urls == 0 %}disabled{% endif %}>
+                <span class="icon">🔄</span> Обновить все
+            </button>
+        </div>
+    </div>
+
+    <div class="stats-cards">
+        <div class="card stat-card">
+            <div class="card-header">
+                <h3>Всего URL</h3>
+                <div class="icon blue">🔗</div>
+            </div>
+            <div class="card-content">
+                <div class="stat-value">{{ total_urls }}</div>
+            </div>
+        </div>
+        <div class="card stat-card">
+            <div class="card-header">
+                <h3>Индексируется в Google</h3>
+                <div class="icon blue">G</div>
+            </div>
+            <div class="card-content">
+                <div class="stat-value">{{ indexed_in_google }} из {{ total_urls }}</div>
+                {% if total_urls > 0 %}
+                <div class="stat-trend {% if indexed_in_google == total_urls %}positive{% else %}negative{% endif %}">
+                    <span>{% if indexed_in_google == total_urls %}↑{% else %}↓{% endif %}</span>
+                    <span>{{ (indexed_in_google / total_urls * 100) | round }}%</span>
+                    <span class="trend-period">за 7 дней</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card stat-card">
+            <div class="card-header">
+                <h3>Индексируется в Яндекс</h3>
+                <div class="icon blue">Я</div>
+            </div>
+            <div class="card-content">
+                <div class="stat-value">{{ indexed_in_yandex }} из {{ total_urls }}</div>
+                {% if total_urls > 0 %}
+                <div class="stat-trend {% if indexed_in_yandex == total_urls %}positive{% else %}negative{% endif %}">
+                    <span>{% if indexed_in_yandex == total_urls %}↑{% else %}↓{% endif %}</span>
+                    <span>{{ (indexed_in_yandex / total_urls * 100) | round }}%</span>
+                    <span class="trend-period">за 7 дней</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card stat-card {% if not_indexed_total > 0 %}border-red{% endif %}">
+            <div class="card-header">
+                <h3>Требуют внимания</h3>
+                <div class="icon blue">✓</div>
+            </div>
+            <div class="card-content">
+                <div class="stat-value">{{ not_indexed_total }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="url-table-container">
+        <div class="table-filters">
+            <div class="search-container">
+                <input type="text" id="url-search" placeholder="Поиск по URL..." class="search-input">
+            </div>
+            <div class="group-filter">
+                <select id="group-filter" class="select">
+                    <option value="">Все группы</option>
+                    {% for group in groups %}
+                    <option value="{{ group.id }}">{{ group.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="results-count">
+                <span>Показано: <span id="filtered-count">{{ results|length }}</span> из {{ results|length }}</span>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table class="data-table" id="urls-table">
+                <thead>
+                    <tr>
+                        <th>URL</th>
+                        <th>Группа</th>
+                        <th>Google</th>
+                        <th>Яндекс</th>
+                        <th>Последняя проверка</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if results %}
+                        {% for item in results %}
+                        <tr data-url="{{ item.url }}">
+                            <td class="url-cell">
+                                <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.url }}</a>
+                            </td>
+                            <td>
+                                {% for group in groups %}
+                                    {% if item.url in group.urls %}
+                                        {{ group.name }}
+                                        {% break %}
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted">Без группы</span>
+                                {% endfor %}
+                            </td>
+                            <td>
+                                <span class="badge {% if item.google %}success{% else %}error{% endif %}">
+                                    {% if item.google %}Да{% else %}Нет{% endif %}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge {% if item.yandex %}success{% else %}error{% endif %}">
+                                    {% if item.yandex %}Да{% else %}Нет{% endif %}
+                                </span>
+                            </td>
+                            <td>{{ item.date | truncate(16, True, '', 0) }}</td>
+                            <td>
+                                <div class="dropdown">
+                                    <button class="btn icon-btn dropdown-toggle">⋮</button>
+                                    <div class="dropdown-menu">
+                                        <a href="#" class="check-url" data-url="{{ item.url }}">Проверить сейчас</a>
+                                        <a href="#" class="delete-url" data-url="{{ item.url }}">Удалить</a>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="6" class="empty-state">
+                                <p>Нет данных. Добавьте URL для начала мониторинга.</p>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Модальное окно для добавления URL -->
+    <div id="add-url-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Добавить URL для проверки</h2>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="urls">URL адреса (по одному на строку)</label>
+                    <textarea id="urls" rows="5" placeholder="https://example.com/page1&#10;https://example.com/page2"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>Выберите группу</label>
+                    <div class="group-selection">
+                        <select id="group-select" class="select" disabled>
+                            <option value="">Выберите группу</option>
+                            {% for group in groups %}
+                            <option value="{{ group.id }}">{{ group.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <button id="toggle-group-type" class="btn outline">Новая группа</button>
+                    </div>
+                </div>
+                
+                <div class="form-group" id="new-group-container" style="display:none;">
+                    <label for="new-group">Название новой группы</label>
+                    <input type="text" id="new-group" placeholder="Например: Блог">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn outline" id="cancel-add-url">Отмена</button>
+                <button class="btn primary" id="confirm-add-url">Добавить</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Функции для работы с модальным окном
+    function openModal(modal) {
+        modal.style.display = 'flex';
+        document.body.classList.add('modal-open');
+    }
+    
+    function closeModal(modal) {
+        modal.style.display = 'none';
+        document.body.classList.remove('modal-open');
+    }
+    
+    // Открытие модального окна добавления URL
+    const addUrlModal = document.getElementById('add-url-modal');
+    const addUrlBtn = document.getElementById('add-url-btn');
+    
+    addUrlBtn.addEventListener('click', function() {
+        openModal(addUrlModal);
+    });
+    
+    // Закрытие модального окна
+    document.querySelectorAll('.close-modal, #cancel-add-url').forEach(element => {
+        element.addEventListener('click', function() {
+            closeModal(addUrlModal);
+        });
+    });
+    
+    // Переключение между выбором существующей и созданием новой группы
+    const toggleGroupBtn = document.getElementById('toggle-group-type');
+    const groupSelect = document.getElementById('group-select');
+    const newGroupContainer = document.getElementById('new-group-container');
+    const newGroupInput = document.getElementById('new-group');
+    let isNewGroup = false;
+    
+    toggleGroupBtn.addEventListener('click', function() {
+        isNewGroup = !isNewGroup;
+        if (isNewGroup) {
+            toggleGroupBtn.textContent = 'Выбрать существующую';
+            groupSelect.disabled = true;
+            newGroupContainer.style.display = 'block';
+        } else {
+            toggleGroupBtn.textContent = 'Новая группа';
+            groupSelect.disabled = false;
+            newGroupContainer.style.display = 'none';
+        }
+    });
+    
+    // Добавление URL
+    const confirmAddUrlBtn = document.getElementById('confirm-add-url');
+    const urlsTextarea = document.getElementById('urls');
+    
+    confirmAddUrlBtn.addEventListener('click', function() {
+        const urls = urlsTextarea.value.split('\n').filter(url => url.trim() !== '');
+        if (urls.length === 0) return;
+        
+        let groupIdOrName = null;
+        if (isNewGroup && newGroupInput.value.trim()) {
+            groupIdOrName = newGroupInput.value.trim();
+        } else if (!isNewGroup && groupSelect.value) {
+            groupIdOrName = groupSelect.value;
+        }
+        
+        // Отправка запроса на сервер
+        fetch('/api/add_urls', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                urls: urls,
+                groupIdOrName: groupIdOrName
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast('success', data.message);
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                showToast('error', data.message || 'Произошла ошибка');
+            }
+        })
+        .catch(error => {
+            showToast('error', 'Ошибка при добавлении URL: ' + error.message);
+        })
+        .finally(() => {
+            closeModal(addUrlModal);
+        });
+    });
+    
+    // Проверка URL
+    document.querySelectorAll('.check-url').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const url = this.getAttribute('data-url');
+            
+            fetch('/api/check_url', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ url: url })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('success', data.message);
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    showToast('error', data.message);
+                }
+            })
+            .catch(error => {
+                showToast('error', 'Ошибка при проверке URL: ' + error.message);
+            });
+        });
+    });
+    
+    // Удаление URL
+    document.querySelectorAll('.delete-url').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (confirm('Вы уверены, что хотите удалить этот URL?')) {
+                const url = this.getAttribute('data-url');
+                
+                fetch('/api/delete_url', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ url: url })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast('success', data.message);
+                        const row = this.closest('tr');
+                        row.style.opacity = '0';
+                        setTimeout(() => {
+                            row.remove();
+                            updateFilteredCount();
+                        }, 300);
+                    } else {
+                        showToast('error', data.message);
+                    }
+                })
+                .catch(error => {
+                    showToast('error', 'Ошибка при удалении URL: ' + error.message);
+                });
+            }
+        });
+    });
+    
+    // Обновление всех URL
+    const refreshAllBtn = document.getElementById('refresh-all-btn');
+    
+    refreshAllBtn.addEventListener('click', function() {
+        if (this.disabled) return;
+        
+        this.disabled = true;
+        this.innerHTML = '<span class="icon">🔄</span> Обновление...';
+        
+        fetch('/api/refresh_all', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showToast('success', data.message);
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                showToast('error', data.message);
+            }
+        })
+        .catch(error => {
+            showToast('error', 'Ошибка при обновлении данных: ' + error.message);
+        })
+        .finally(() => {
+            this.disabled = false;
+            this.innerHTML = '<span class="icon">🔄</span> Обновить все';
+        });
+    });
+    
+    // Фильтрация таблицы
+    const urlSearch = document.getElementById('url-search');
+    const groupFilter = document.getElementById('group-filter');
+    const urlsTable = document.getElementById('urls-table');
+    const tableRows = urlsTable.querySelectorAll('tbody tr');
+    const filteredCount = document.getElementById('filtered-count');
+    
+    function filterTable() {
+        const searchTerm = urlSearch.value.toLowerCase();
+        const selectedGroup = groupFilter.value;
+        let count = 0;
+        
+        tableRows.forEach(row => {
+            if (row.querySelector('.empty-state')) return;
+            
+            const url = row.querySelector('.url-cell a').textContent.toLowerCase();
+            const matchesSearch = url.includes(searchTerm);
+            
+            // Определяем, соответствует ли строка выбранной группе
+            let matchesGroup = true;
+            if (selectedGroup) {
+                const rowUrl = row.getAttribute('data-url');
+                {% for group in groups %}
+                if ('{{ group.id }}' === selectedGroup) {
+                    matchesGroup = [{% for url in group.urls %}'{{ url }}'{% if not loop.last %},{% endif %}{% endfor %}].includes(rowUrl);
+                }
+                {% endfor %}
+            }
+            
+            if (matchesSearch && matchesGroup) {
+                row.style.display = '';
+                count++;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+        
+        filteredCount.textContent = count;
+        
+        // Отображаем пустое состояние, если нет результатов
+        const tbody = urlsTable.querySelector('tbody');
+        let emptyRow = tbody.querySelector('.empty-filter-row');
+        
+        if (count === 0 && tableRows.length > 0 && !tableRows[0].querySelector('.empty-state')) {
+            if (!emptyRow) {
+                emptyRow = document.createElement('tr');
+                emptyRow.className = 'empty-filter-row';
+                emptyRow.innerHTML = `
+                    <td colspan="6" class="empty-state">
+                        <p>Ничего не найдено. Попробуйте изменить параметры поиска.</p>
+                    </td>
+                `;
+                tbody.appendChild(emptyRow);
+            }
+            emptyRow.style.display = '';
+        } else if (emptyRow) {
+            emptyRow.style.display = 'none';
+        }
+    }
+    
+    urlSearch.addEventListener('input', filterTable);
+    groupFilter.addEventListener('change', filterTable);
+    
+    function updateFilteredCount() {
+        const visibleRows = document.querySelectorAll('#urls-table tbody tr:not([style*="display: none"])');
+        filteredCount.textContent = visibleRows.length;
+    }
+    
+    // Показ уведомлений
+    function showToast(type, message) {
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.classList.add('show');
+        }, 10);
+        
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                document.body.removeChild(toast);
+            }, 300);
+        }, 3000);
+    }
+    
+    // Инициализация выпадающих меню
+    document.querySelectorAll('.dropdown-toggle').forEach(toggle => {
+        toggle.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.nextElementSibling.classList.toggle('active');
+        });
+    });
+    
+    document.addEventListener('click', function() {
+        document.querySelectorAll('.dropdown-menu.active').forEach(menu => {
+            menu.classList.remove('active');
+        });
+    });
+});
+</script>
+{% endblock %}
