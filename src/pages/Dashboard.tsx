@@ -1,101 +1,24 @@
 
-import React, { useEffect, useState, useCallback } from "react";
-import { Button } from "@/components/ui/button";
-import DashboardCard from "@/components/DashboardCard";
+// Новый компактный дашборд. Вся лишняя логика вынесена в хуки и отдельные компоненты!
+import React, { useState } from "react";
+import { useDashboardData } from "@/hooks/useDashboardData";
+import DashboardActions from "@/components/DashboardActions";
+import DashboardStats from "@/components/DashboardStats";
 import IndexationTable from "@/components/IndexationTable";
 import AddUrlModal from "@/components/AddUrlModal";
-import { IndexationResult, UrlGroup } from "@/types";
-import { RiAddLine, RiCheckLine, RiRefreshLine, RiLinksLine, RiSettings4Line } from "react-icons/ri";
 import { batchCheckIndexation, getApiKey } from "@/services/indexationApi";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Link } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { RiSettings4Line, RiLinksLine, RiAddLine } from "react-icons/ri";
 
 const Dashboard = () => {
-  const [results, setResults] = useState<IndexationResult[]>([]);
-  const [groups, setGroups] = useState<UrlGroup[]>([]);
+  const { results, groups, isLoading, reload } = useDashboardData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  // Загрузка результатов и групп с Supabase
-  const fetchData = useCallback(async () => {
-    try {
-      setIsLoading(true);
-
-      // Получаем список результатов индексации
-      const { data: dbResults, error: resultsError } = await supabase
-        .from("indexation_results")
-        .select("*")
-        .order("date", { ascending: false });
-
-      if (resultsError) {
-        toast({
-          title: "Ошибка загрузки результатов",
-          description: resultsError.message,
-          variant: "destructive"
-        });
-        return;
-      }
-      setResults(dbResults ?? []);
-
-      // Получаем список групп
-      const { data: dbGroups, error: groupsError } = await supabase
-        .from("url_groups")
-        .select("*");
-
-      if (groupsError) {
-        toast({
-          title: "Ошибка загрузки групп",
-          description: groupsError.message,
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Для каждой группы подгружаем её URL (через связь group_urls)
-      const groupsWithUrls: UrlGroup[] = [];
-
-      for (const group of dbGroups ?? []) {
-        const { data: groupUrls, error: groupUrlsError } = await supabase
-          .from("group_urls")
-          .select("url")
-          .eq("group_id", group.id);
-
-        if (groupUrlsError) {
-          toast({
-            title: `Ошибка группировки (${group.name})`,
-            description: groupUrlsError.message,
-            variant: "destructive"
-          });
-          continue;
-        }
-
-        groupsWithUrls.push({
-          id: group.id,
-          name: group.name,
-          urls: groupUrls ? groupUrls.map(u => u.url) : [],
-        });
-      }
-      setGroups(groupsWithUrls);
-
-    } catch (error: any) {
-      toast({
-        title: "Ошибка загрузки",
-        description: error.message,
-        variant: "destructive"
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [toast]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // Добавление URL
+  // Добавление url — использует весь тот же механизм как и раньше
   const handleAddUrls = async (urls: string[], groupIdOrName?: string) => {
     try {
       const apiKey = getApiKey();
@@ -107,12 +30,9 @@ const Dashboard = () => {
         });
         return;
       }
-      setIsLoading(true);
-
-      // --- Создание группы если указано название ---
+      // Создание новой группы при необходимости
       let groupId = "";
       if (groupIdOrName) {
-        // Проверяем, есть ли группа с таким id
         let existing = groups.find(g => g.id === groupIdOrName || g.name === groupIdOrName);
         if (!existing) {
           const { data: createdGroup, error } = await supabase.from("url_groups")
@@ -125,7 +45,6 @@ const Dashboard = () => {
               description: error.message,
               variant: "destructive"
             });
-            setIsLoading(false);
             return;
           }
           groupId = createdGroup.id;
@@ -133,15 +52,13 @@ const Dashboard = () => {
           groupId = existing.id;
         }
       }
-
       toast({
         title: "Проверка URL",
         description: "Выполняется проверка URL...",
       });
-
       const newResults = await batchCheckIndexation(urls);
 
-      // Сохраняем результаты в indexation_results
+      // Сохраняем результаты
       for (const result of newResults) {
         await supabase.from("indexation_results").upsert(
           {
@@ -154,7 +71,7 @@ const Dashboard = () => {
         );
       }
 
-      // Сохраняем связи с группой (если есть)
+      // Связь с группой
       if (groupId) {
         const urlsToInsert = urls.map(url => ({
           group_id: groupId,
@@ -162,8 +79,7 @@ const Dashboard = () => {
         }));
         await supabase.from("group_urls").upsert(urlsToInsert, { onConflict: "group_id,url" });
       }
-
-      await fetchData();
+      await reload();
       toast({
         title: "Готово!",
         description: `Добавлено ${newResults.length} URL для мониторинга.`
@@ -174,21 +90,15 @@ const Dashboard = () => {
         description: error.message,
         variant: "destructive"
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  // Удаление URL
   const handleDeleteUrl = async (url: string) => {
     try {
       await supabase.from("indexation_results").delete().eq("url", url);
       await supabase.from("group_urls").delete().eq("url", url);
-      await fetchData();
-      toast({
-        title: "URL удалён",
-        description: "URL успешно удалён из мониторинга."
-      });
+      await reload();
+      toast({ title: "URL удалён", description: "URL успешно удалён из мониторинга." });
     } catch (error: any) {
       toast({
         title: "Ошибка при удалении",
@@ -198,7 +108,6 @@ const Dashboard = () => {
     }
   };
 
-  // Проверить конкретный URL
   const handleCheckUrl = async (url: string) => {
     try {
       const apiKey = getApiKey();
@@ -210,11 +119,7 @@ const Dashboard = () => {
         });
         return;
       }
-      setIsLoading(true);
-      toast({
-        title: "Проверка URL",
-        description: "Проверяется индексация..."
-      });
+      toast({ title: "Проверка URL", description: "Проверяется индексация..." });
 
       const [result] = await batchCheckIndexation([url]);
       if (result) {
@@ -232,19 +137,16 @@ const Dashboard = () => {
           description: "Индексация обновлена."
         });
       }
-      await fetchData();
+      await reload();
     } catch (error: any) {
       toast({
         title: "Ошибка при проверке",
         description: error.message,
         variant: "destructive"
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  // Проверить все
   const handleRefreshAll = async () => {
     try {
       const apiKey = getApiKey();
@@ -257,17 +159,10 @@ const Dashboard = () => {
         return;
       }
       if (results.length === 0) {
-        toast({
-          title: "Нет URL",
-          description: "Сначала добавьте адреса."
-        });
+        toast({ title: "Нет URL", description: "Сначала добавьте адреса." });
         return;
       }
-      setIsLoading(true);
-      toast({
-        title: "Обновление всех",
-        description: "Проверяем все URL..."
-      });
+      toast({ title: "Обновление всех", description: "Проверяем все URL..." });
       const urls = results.map(r => r.url);
       const newResults = await batchCheckIndexation(urls);
       for (const result of newResults) {
@@ -281,50 +176,34 @@ const Dashboard = () => {
           { onConflict: "url" }
         );
       }
-      await fetchData();
-      toast({
-        title: "Обновлено",
-        description: `${newResults.length} URL проверено`
-      });
+      await reload();
+      toast({ title: "Обновлено", description: `${newResults.length} URL проверено` });
     } catch (error: any) {
       toast({
         title: "Ошибка обновления",
         description: error.message,
         variant: "destructive"
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  // Статистика
+  // Подсчеты
   const totalUrls = results.length;
-  const indexedInGoogle = results.filter(r => r.google).length;
-  const indexedInYandex = results.filter(r => r.yandex).length;
-  const notIndexedTotal = results.filter(r => !r.google || !r.yandex).length;
+  const google = results.filter(r => r.google).length;
+  const yandex = results.filter(r => r.yandex).length;
+  const notIndexed = results.filter(r => !r.google || !r.yandex).length;
   const apiKeyExists = !!getApiKey();
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Дашборд</h1>
-        <div className="flex space-x-2">
-          <Button
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center"
-            disabled={isLoading}
-          >
-            <RiAddLine className="mr-2 h-4 w-4" /> Добавить URL
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleRefreshAll}
-            className="flex items-center"
-            disabled={isLoading || results.length === 0}
-          >
-            <RiRefreshLine className="mr-2 h-4 w-4" /> Обновить все
-          </Button>
-        </div>
+        <DashboardActions
+          isLoading={isLoading}
+          hasUrls={results.length > 0}
+          onAdd={() => setIsAddModalOpen(true)}
+          onRefresh={handleRefreshAll}
+        />
       </div>
 
       {!apiKeyExists && (
@@ -333,45 +212,20 @@ const Dashboard = () => {
           <AlertDescription className="flex items-center justify-between">
             <span>Для работы с проверкой индексации необходимо указать API ключ в настройках.</span>
             <Link to="/settings">
-              <Button size="sm" variant="outline" className="flex items-center">
+              <span className="flex items-center px-3 py-1 border rounded hover:bg-gray-100 text-sm">
                 <RiSettings4Line className="mr-2 h-4 w-4" /> Настройки
-              </Button>
+              </span>
             </Link>
           </AlertDescription>
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <DashboardCard
-          title="Всего URL"
-          value={totalUrls}
-          icon={<RiLinksLine className="h-4 w-4" />}
-        />
-        <DashboardCard
-          title="Индексируется в Google"
-          value={`${indexedInGoogle} из ${totalUrls}`}
-          icon={<span className="font-bold">G</span>}
-          trend={totalUrls > 0 ? {
-            value: Math.round((indexedInGoogle / totalUrls) * 100),
-            isPositive: indexedInGoogle === totalUrls
-          } : undefined}
-        />
-        <DashboardCard
-          title="Индексируется в Яндекс"
-          value={`${indexedInYandex} из ${totalUrls}`}
-          icon={<span className="font-bold">Я</span>}
-          trend={totalUrls > 0 ? {
-            value: Math.round((indexedInYandex / totalUrls) * 100),
-            isPositive: indexedInYandex === totalUrls
-          } : undefined}
-        />
-        <DashboardCard
-          title="Требуют внимания"
-          value={notIndexedTotal}
-          icon={<RiCheckLine className="h-4 w-4" />}
-          className={notIndexedTotal > 0 ? "border-red-300" : undefined}
-        />
-      </div>
+      <DashboardStats
+        total={totalUrls}
+        indexedGoogle={google}
+        indexedYandex={yandex}
+        notIndexed={notIndexed}
+      />
 
       <IndexationTable
         data={results}
@@ -396,12 +250,12 @@ const Dashboard = () => {
           <p className="text-gray-500">
             Добавьте URL для проверки индексации в поисковых системах.
           </p>
-          <Button
+          <button
+            className="mt-4 flex items-center justify-center px-4 py-2 bg-primary text-white rounded"
             onClick={() => setIsAddModalOpen(true)}
-            className="mt-4"
           >
             <RiAddLine className="mr-2 h-4 w-4" /> Добавить первый URL
-          </Button>
+          </button>
         </div>
       )}
     </div>
@@ -409,4 +263,3 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-
