@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,15 +25,20 @@ interface IndexationTableProps {
 const IndexationTable = ({ data, groups, onDelete, onCheck }: IndexationTableProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [filteredData, setFilteredData] = useState<IndexationResult[]>(data);
   
-  // Фильтрация данных по поиску и группе
-  const filteredData = data.filter((item) => {
-    const matchesSearch = item.url.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesGroup = selectedGroup 
-      ? groups.find(g => g.id === selectedGroup)?.urls.includes(item.url) 
-      : true;
-    return matchesSearch && matchesGroup;
-  });
+  // Update filtered data whenever data, searchTerm, or selectedGroup changes
+  useEffect(() => {
+    const newFilteredData = data.filter((item) => {
+      const matchesSearch = item.url.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesGroup = selectedGroup 
+        ? groups.find(g => g.id === selectedGroup)?.urls.includes(item.url) 
+        : true;
+      return matchesSearch && matchesGroup;
+    });
+    
+    setFilteredData(newFilteredData);
+  }, [data, searchTerm, selectedGroup, groups]);
 
   // Определение группы для URL
   const getGroupName = (url: string): string => {

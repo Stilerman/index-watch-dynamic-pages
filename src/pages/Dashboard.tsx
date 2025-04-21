@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import DashboardCard from "@/components/DashboardCard";
@@ -150,6 +151,7 @@ const Dashboard = () => {
           .upsert(urlInserts, { onConflict: 'group_id,url' });
       }
 
+      // Обновляем данные сразу после добавления
       await fetchIndexationResults();
       await fetchGroups();
 
@@ -188,7 +190,10 @@ const Dashboard = () => {
         console.error("Ошибка при удалении URL из групп:", groupUrlError);
       }
       
+      // Обновляем локальные данные немедленно
       setResults(results.filter(r => r.url !== url));
+      
+      // Также обновляем группы
       fetchGroups();
       
       toast({
@@ -223,7 +228,12 @@ const Dashboard = () => {
           throw new Error(error.message);
         }
         
-        fetchIndexationResults();
+        // Обновляем локальные данные немедленно
+        setResults(prevResults => 
+          prevResults.map(r => 
+            r.url === result.url ? result : r
+          )
+        );
         
         toast({
           title: "Проверка выполнена",
@@ -270,7 +280,8 @@ const Dashboard = () => {
         }
       }
       
-      fetchIndexationResults();
+      // Обновляем локальные данные вместо запроса к серверу
+      setResults(newResults);
       
       toast({
         title: "Обновление выполнено",
@@ -286,6 +297,12 @@ const Dashboard = () => {
       setIsLoading(false);
     }
   };
+
+  // Вычисляем статистику на основе актуальных данных
+  const totalUrls = results.length;
+  const indexedInGoogle = results.filter(r => r.google).length;
+  const indexedInYandex = results.filter(r => r.yandex).length;
+  const notIndexedTotal = results.filter(r => !r.google || !r.yandex).length;
 
   return (
     <div className="space-y-6">
