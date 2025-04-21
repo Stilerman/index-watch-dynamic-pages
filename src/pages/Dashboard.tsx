@@ -1,6 +1,6 @@
 
 // Новый компактный дашборд. Вся лишняя логика вынесена в хуки и отдельные компоненты!
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import DashboardActions from "@/components/DashboardActions";
 import DashboardStats from "@/components/DashboardStats";
@@ -12,15 +12,24 @@ import { supabase } from "@/integrations/supabase/client";
 import { Link } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { RiSettings4Line, RiLinksLine, RiAddLine } from "react-icons/ri";
+import { v4 as uuidv4 } from "uuid";
 
 const Dashboard = () => {
   const { results, groups, isLoading, reload } = useDashboardData();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const { toast } = useToast();
 
+  useEffect(() => {
+    console.log("Отображение результатов:", results.length);
+  }, [results]);
+
   // Добавление url — использует весь тот же механизм как и раньше
   const handleAddUrls = async (urls: string[], groupIdOrName?: string) => {
     try {
+      console.log("Добавление URLs:", urls);
+      console.log("В группу:", groupIdOrName);
+      
+      // Проверяем наличие API ключа
       const apiKey = getApiKey();
       if (!apiKey) {
         toast({
@@ -30,16 +39,20 @@ const Dashboard = () => {
         });
         return;
       }
+
       // Создание новой группы при необходимости
       let groupId = "";
       if (groupIdOrName) {
         let existing = groups.find(g => g.id === groupIdOrName || g.name === groupIdOrName);
         if (!existing) {
+          const newGroupId = uuidv4();
           const { data: createdGroup, error } = await supabase.from("url_groups")
-            .insert({ name: groupIdOrName })
+            .insert({ id: newGroupId, name: groupIdOrName })
             .select()
             .single();
+            
           if (error) {
+            console.error("Ошибка создания группы:", error);
             toast({
               title: "Ошибка создания группы",
               description: error.message,
@@ -47,20 +60,26 @@ const Dashboard = () => {
             });
             return;
           }
+          
+          console.log("Создана новая группа:", createdGroup);
           groupId = createdGroup.id;
         } else {
           groupId = existing.id;
         }
       }
+
       toast({
         title: "Проверка URL",
         description: "Выполняется проверка URL...",
       });
+      
+      // Получаем результаты индексации
       const newResults = await batchCheckIndexation(urls);
+      console.log("Получены результаты индексации:", newResults);
 
-      // Сохраняем результаты
+      // Сохраняем результаты в базе
       for (const result of newResults) {
-        await supabase.from("indexation_results").upsert(
+        const { error: insertError } = await supabase.from("indexation_results").upsert(
           {
             url: result.url,
             google: result.google,
@@ -69,22 +88,43 @@ const Dashboard = () => {
           },
           { onConflict: "url" }
         );
+        
+        if (insertError) {
+          console.error("Ошибка сохранения результата для URL", result.url, insertError);
+        }
       }
 
-      // Связь с группой
+      // Связываем URLs с группой
       if (groupId) {
         const urlsToInsert = urls.map(url => ({
+          id: uuidv4(),
           group_id: groupId,
           url: url.trim(),
         }));
-        await supabase.from("group_urls").upsert(urlsToInsert, { onConflict: "group_id,url" });
+        
+        const { error: groupUrlsError } = await supabase
+          .from("group_urls")
+          .upsert(urlsToInsert, { onConflict: ["group_id", "url"] });
+          
+        if (groupUrlsError) {
+          console.error("Ошибка привязки URL к группе:", groupUrlsError);
+          toast({
+            title: "Ошибка привязки URL к группе",
+            description: groupUrlsError.message,
+            variant: "destructive"
+          });
+        }
       }
+      
+      // Обновляем данные на странице
       await reload();
+      
       toast({
         title: "Готово!",
         description: `Добавлено ${newResults.length} URL для мониторинга.`
       });
     } catch (error: any) {
+      console.error("Ошибка при добавлении URL:", error);
       toast({
         title: "Ошибка",
         description: error.message,
@@ -95,11 +135,32 @@ const Dashboard = () => {
 
   const handleDeleteUrl = async (url: string) => {
     try {
-      await supabase.from("indexation_results").delete().eq("url", url);
-      await supabase.from("group_urls").delete().eq("url", url);
+      console.log("Удаление URL:", url);
+      
+      // Удаляем URL из результатов индексации
+      const { error: deleteResultError } = await supabase
+        .from("indexation_results")
+        .delete()
+        .eq("url", url);
+        
+      if (deleteResultError) {
+        console.error("Ошибка удаления результата:", deleteResultError);
+      }
+      
+      // Удаляем URL из групп
+      const { error: deleteGroupUrlError } = await supabase
+        .from("group_urls")
+        .delete()
+        .eq("url", url);
+        
+      if (deleteGroupUrlError) {
+        console.error("Ошибка удаления ссылки из группы:", deleteGroupUrlError);
+      }
+      
       await reload();
       toast({ title: "URL удалён", description: "URL успешно удалён из мониторинга." });
     } catch (error: any) {
+      console.error("Ошибка при удалении URL:", error);
       toast({
         title: "Ошибка при удалении",
         description: error.message,
@@ -110,6 +171,8 @@ const Dashboard = () => {
 
   const handleCheckUrl = async (url: string) => {
     try {
+      console.log("Проверка индексации URL:", url);
+      
       const apiKey = getApiKey();
       if (!apiKey) {
         toast({
@@ -119,11 +182,13 @@ const Dashboard = () => {
         });
         return;
       }
+      
       toast({ title: "Проверка URL", description: "Проверяется индексация..." });
 
+      // Получаем результат индексации
       const [result] = await batchCheckIndexation([url]);
       if (result) {
-        await supabase.from("indexation_results").upsert(
+        const { error } = await supabase.from("indexation_results").upsert(
           {
             url: result.url,
             google: result.google,
@@ -132,13 +197,21 @@ const Dashboard = () => {
           },
           { onConflict: "url" }
         );
+        
+        if (error) {
+          console.error("Ошибка сохранения результата проверки:", error);
+          throw error;
+        }
+        
         toast({
           title: "Проверка завершена",
           description: "Индексация обновлена."
         });
       }
+      
       await reload();
     } catch (error: any) {
+      console.error("Ошибка при проверке URL:", error);
       toast({
         title: "Ошибка при проверке",
         description: error.message,
@@ -149,6 +222,8 @@ const Dashboard = () => {
 
   const handleRefreshAll = async () => {
     try {
+      console.log("Обновление всех URL...");
+      
       const apiKey = getApiKey();
       if (!apiKey) {
         toast({
@@ -158,15 +233,20 @@ const Dashboard = () => {
         });
         return;
       }
+      
       if (results.length === 0) {
         toast({ title: "Нет URL", description: "Сначала добавьте адреса." });
         return;
       }
+      
       toast({ title: "Обновление всех", description: "Проверяем все URL..." });
+      
       const urls = results.map(r => r.url);
       const newResults = await batchCheckIndexation(urls);
+      
+      // Сохраняем результаты в базу
       for (const result of newResults) {
-        await supabase.from("indexation_results").upsert(
+        const { error } = await supabase.from("indexation_results").upsert(
           {
             url: result.url,
             google: result.google,
@@ -175,10 +255,16 @@ const Dashboard = () => {
           },
           { onConflict: "url" }
         );
+        
+        if (error) {
+          console.error("Ошибка обновления результата для URL", result.url, error);
+        }
       }
+      
       await reload();
       toast({ title: "Обновлено", description: `${newResults.length} URL проверено` });
     } catch (error: any) {
+      console.error("Ошибка обновления всех URL:", error);
       toast({
         title: "Ошибка обновления",
         description: error.message,

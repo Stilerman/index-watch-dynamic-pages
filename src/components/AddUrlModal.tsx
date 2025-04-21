@@ -28,7 +28,10 @@ const AddUrlModal = ({ open, onClose, onAdd, groups }: AddUrlModalProps) => {
       .map(url => url.trim())
       .filter(url => url !== "");
 
-    if (urls.length === 0) return;
+    if (urls.length === 0) {
+      console.log("Нет URL для добавления");
+      return;
+    }
 
     // Используем либо ID существующей группы, либо название новой
     const groupIdOrName = isCreatingNewGroup 

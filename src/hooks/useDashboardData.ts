@@ -14,12 +14,16 @@ export function useDashboardData() {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
+      console.log("Загрузка данных из базы...");
+      
       // Получаем результаты индексации
       const { data: dbResults, error: resultsError } = await supabase
         .from("indexation_results")
         .select("*")
         .order("date", { ascending: false });
+        
       if (resultsError) {
+        console.error("Ошибка загрузки результатов:", resultsError);
         toast({
           title: "Ошибка загрузки результатов",
           description: resultsError.message,
@@ -28,13 +32,17 @@ export function useDashboardData() {
         setIsLoading(false);
         return;
       }
+      
+      console.log("Загружено результатов:", dbResults?.length);
       setResults(dbResults ?? []);
 
       // Получаем группы
       const { data: dbGroups, error: groupsError } = await supabase
         .from("url_groups")
         .select("*");
+        
       if (groupsError) {
+        console.error("Ошибка загрузки групп:", groupsError);
         toast({
           title: "Ошибка загрузки групп",
           description: groupsError.message,
@@ -43,13 +51,18 @@ export function useDashboardData() {
         setIsLoading(false);
         return;
       }
+      
       // Для каждой группы — подтягиваем ее url
       const groupsWithUrls: UrlGroup[] = [];
       for (const group of dbGroups ?? []) {
-        const { data: groupUrls } = await supabase
+        const { data: groupUrls, error: urlsError } = await supabase
           .from("group_urls")
           .select("url")
           .eq("group_id", group.id);
+          
+        if (urlsError) {
+          console.error("Ошибка загрузки URL для группы:", group.id, urlsError);
+        }
 
         groupsWithUrls.push({
           id: group.id,
@@ -57,8 +70,11 @@ export function useDashboardData() {
           urls: groupUrls ? groupUrls.map(u => u.url) : [],
         });
       }
+      
+      console.log("Загружено групп:", groupsWithUrls.length);
       setGroups(groupsWithUrls);
     } catch (err: any) {
+      console.error("Ошибка загрузки данных:", err);
       toast({
         title: "Ошибка загрузки",
         description: err.message,
@@ -69,7 +85,10 @@ export function useDashboardData() {
     }
   }, [toast]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { 
+    console.log("Первичная загрузка данных...");
+    fetchData(); 
+  }, [fetchData]);
 
   return { results, groups, isLoading, reload: fetchData };
 }
