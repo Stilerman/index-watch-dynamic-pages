@@ -202,7 +202,7 @@ const IndexationTable = ({
           <PaginationItem>
             <PaginationPrevious 
               onClick={() => setPage(Math.max(1, page - 1))} 
-              isDisabled={page === 1} 
+              disabled={page === 1} 
             />
           </PaginationItem>
           {Array.from({ length: totalPages }, (_, i) => (
@@ -218,7 +218,7 @@ const IndexationTable = ({
           <PaginationItem>
             <PaginationNext 
               onClick={() => setPage(Math.min(totalPages, page + 1))} 
-              isDisabled={page === totalPages} 
+              disabled={page === totalPages} 
             />
           </PaginationItem>
         </PaginationContent>
