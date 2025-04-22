@@ -8,6 +8,7 @@ import IndexationTableRow from "./table/IndexationTableRow";
 import TablePagination from "./table/TablePagination";
 import { useTableSort } from "@/hooks/useTableSort";
 import { useTableFilter } from "@/hooks/useTableFilter";
+import { useGroupUtils } from "@/hooks/useGroupUtils";
 
 interface IndexationTableProps {
   data: IndexationResult[];
@@ -34,15 +35,7 @@ const IndexationTable = ({
 }: IndexationTableProps) => {
   const { sortColumn, sortDirection, handleSort, sortData } = useTableSort();
   const { searchTerm, setSearchTerm, filterData } = useTableFilter();
-
-  const getGroupName = (url: string): string => {
-    for (const group of groups) {
-      if (group.urls.includes(url)) {
-        return group.name;
-      }
-    }
-    return "Без группы";
-  };
+  const { getGroupName } = useGroupUtils(groups);
 
   const sortedData = sortData(data);
   const filteredData = filterData(sortedData);
@@ -96,4 +89,3 @@ const IndexationTable = ({
 };
 
 export default IndexationTable;
-
