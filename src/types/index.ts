@@ -14,9 +14,12 @@ export interface UrlGroup {
 }
 
 export interface IndexationHistory {
-  date: string;
-  google: number;
-  yandex: number;
+  url: string;
+  results: Array<{
+    date: string;
+    google: boolean;
+    yandex: boolean;
+  }>;
 }
 
 export interface ApiSettings {

@@ -201,8 +201,9 @@ const IndexationTable = ({
         <PaginationContent>
           <PaginationItem>
             <PaginationPrevious 
-              onClick={() => setPage(Math.max(1, page - 1))} 
-              disabled={page === 1} 
+              onClick={() => page > 1 && setPage(page - 1)} 
+              aria-disabled={page === 1}
+              className={page === 1 ? "opacity-50 cursor-not-allowed" : ""}
             />
           </PaginationItem>
           {Array.from({ length: totalPages }, (_, i) => (
@@ -217,8 +218,9 @@ const IndexationTable = ({
           ))}
           <PaginationItem>
             <PaginationNext 
-              onClick={() => setPage(Math.min(totalPages, page + 1))} 
-              disabled={page === totalPages} 
+              onClick={() => page < totalPages && setPage(page + 1)} 
+              aria-disabled={page === totalPages}
+              className={page === totalPages ? "opacity-50 cursor-not-allowed" : ""}
             />
           </PaginationItem>
         </PaginationContent>
