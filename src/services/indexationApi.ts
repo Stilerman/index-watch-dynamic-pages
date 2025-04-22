@@ -26,15 +26,16 @@ export const checkIndexation = async (url: string): Promise<{
   }
 
   try {
-    // Симуляция API для тестирования с добавлением search_all=1
     console.log(`Проверка индексации для URL: ${url}`);
+    
+    // На данный момент используем тестовые данные, раскомментируйте реальный API для боевого режима
     return {
       google: Math.random() > 0.3,
       yandex: Math.random() > 0.3,
-      yandex_indexdate: new Date().toISOString() // Имитация даты первой индексации
+      yandex_indexdate: Math.random() > 0.5 ? new Date().toISOString() : undefined
     };
     
-    /* Раскомментировать для реального API
+    /* Код для реального API:
     const response = await fetch(`${API_BASE_URL}?key=${apiKey}&url=${encodeURIComponent(url)}&search_all=1`, {
       method: 'GET',
       headers: {

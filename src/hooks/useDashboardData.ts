@@ -17,7 +17,7 @@ export function useDashboardData(selectedGroup?: string, limit = 50) {
     try {
       console.log("Загрузка данных из базы...");
       
-      // Fetch groups and group URLs
+      // 1. Загружаем все группы
       const { data: groupsData, error: groupsError } = await supabase
         .from("url_groups")
         .select(`
@@ -38,26 +38,29 @@ export function useDashboardData(selectedGroup?: string, limit = 50) {
         return;
       }
 
-      // Process groups data
+      // Обрабатываем данные групп
       const processedGroups = groupsData?.map(group => ({
         id: group.id,
         name: group.name,
-        urls: group.group_urls.map(gu => gu.url)
+        urls: group.group_urls?.map(gu => gu.url) || []
       })) || [];
       
       setGroups(processedGroups);
       
-      // Get URLs to filter by if a group is selected
+      // Получаем URLs для фильтрации по группе
       const selectedUrls = selectedGroup 
         ? processedGroups.find(g => g.id === selectedGroup)?.urls || []
         : [];
       
-      // First, get total count of results for pagination
+      console.log("Выбранная группа:", selectedGroup);
+      console.log("URLs в выбранной группе:", selectedUrls);
+      
+      // Получаем общее количество результатов для пагинации
       let countQuery = supabase
         .from("indexation_results")
         .select("*", { count: 'exact', head: true });
       
-      // Apply filtering by group if selected
+      // Применяем фильтрацию по группе если она выбрана
       if (selectedGroup && selectedUrls.length > 0) {
         countQuery = countQuery.in('url', selectedUrls);
       }
@@ -74,19 +77,25 @@ export function useDashboardData(selectedGroup?: string, limit = 50) {
         return;
       }
       
-      // Now get paginated results
+      console.log("Общее количество результатов:", totalCount);
+      
+      // Получаем результаты с пагинацией
       let resultsQuery = supabase
         .from("indexation_results")
         .select("*")
         .order("date", { ascending: false });
       
-      // Apply filtering by group if selected
+      // Применяем фильтрацию по группе
       if (selectedGroup && selectedUrls.length > 0) {
+        console.log("Применение фильтра по группе:", selectedUrls);
         resultsQuery = resultsQuery.in('url', selectedUrls);
       }
       
-      // Apply pagination
-      resultsQuery = resultsQuery.range((page - 1) * limit, page * limit - 1);
+      // Применяем пагинацию
+      const from = (page - 1) * limit;
+      const to = page * limit - 1;
+      console.log(`Применение пагинации: from=${from}, to=${to}`);
+      resultsQuery = resultsQuery.range(from, to);
 
       const { data: resultsData, error: resultsError } = await resultsQuery;
 
@@ -100,6 +109,7 @@ export function useDashboardData(selectedGroup?: string, limit = 50) {
         return;
       }
 
+      console.log("Загружено результатов:", resultsData?.length);
       setResults(resultsData ?? []);
       setTotalResults(totalCount ?? 0);
     } catch (err: any) {
@@ -115,7 +125,7 @@ export function useDashboardData(selectedGroup?: string, limit = 50) {
   }, [toast, selectedGroup, page, limit]);
 
   useEffect(() => { 
-    console.log("Первичная загрузка данных...");
+    console.log("Запуск загрузки данных с параметрами:", { selectedGroup, page, limit });
     fetchData(); 
   }, [fetchData]);
 

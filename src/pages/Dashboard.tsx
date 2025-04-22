@@ -10,7 +10,6 @@ import { useUrlActions } from "@/hooks/useUrlActions";
 import { useToast } from "@/hooks/use-toast";
 import { batchCheckIndexation, getApiKey } from "@/services/indexationApi";
 import { supabase } from "@/integrations/supabase/client";
-import { v4 as uuidv4 } from "uuid";
 
 const Dashboard = () => {
   const [selectedGroup, setSelectedGroup] = useState<string | undefined>(undefined);
@@ -66,7 +65,9 @@ const Dashboard = () => {
         description: `Начинаем проверку ${urlsToCheck.length} URL...`
       });
 
+      console.log("URLs для проверки:", urlsToCheck);
       const newResults = await batchCheckIndexation(urlsToCheck);
+      console.log("Получены результаты:", newResults);
 
       for (const result of newResults) {
         try {
@@ -78,8 +79,6 @@ const Dashboard = () => {
               yandex: result.yandex,
               date: result.date,
               yandex_indexdate: result.yandex_indexdate
-            }, { 
-              onConflict: 'url' 
             });
           
           if (error) {
@@ -146,8 +145,20 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Остальной код остается без изменений */}
-      {/* Alert, DashboardStats и другие компоненты */}
+      {!apiKeyExists && (
+        <div className="bg-yellow-50 p-4 rounded border border-yellow-200 mb-4">
+          <p className="text-yellow-800">
+            Для проверки индексации необходимо добавить API ключ в настройках.
+          </p>
+        </div>
+      )}
+
+      <DashboardStats 
+        total={totalUrls} 
+        indexedGoogle={google} 
+        indexedYandex={yandex} 
+        notIndexed={notIndexed} 
+      />
 
       <SeoCharts 
         results={results} 
