@@ -1,11 +1,13 @@
 
-import React, { useState } from "react";
+import React from "react";
 import { Table, TableBody } from "@/components/ui/table";
 import { IndexationResult, UrlGroup } from "@/types";
 import SearchBar from "./table/SearchBar";
 import IndexationTableHeader from "./table/IndexationTableHeader";
 import IndexationTableRow from "./table/IndexationTableRow";
 import TablePagination from "./table/TablePagination";
+import { useTableSort } from "@/hooks/useTableSort";
+import { useTableFilter } from "@/hooks/useTableFilter";
 
 interface IndexationTableProps {
   data: IndexationResult[];
@@ -30,38 +32,8 @@ const IndexationTable = ({
   setPage,
   selectedGroup
 }: IndexationTableProps) => {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [sortColumn, setSortColumn] = useState<keyof IndexationResult | null>(null);
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-
-  const handleSort = (column: keyof IndexationResult) => {
-    if (sortColumn === column) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortColumn(column);
-      setSortDirection('desc');
-    }
-  };
-
-  const sortedData = [...data].sort((a, b) => {
-    if (!sortColumn) return 0;
-    const valueA = a[sortColumn];
-    const valueB = b[sortColumn];
-    
-    if (typeof valueA === 'string' && typeof valueB === 'string') {
-      return sortDirection === 'asc'
-        ? valueA.localeCompare(valueB)
-        : valueB.localeCompare(valueA);
-    }
-    
-    if (typeof valueA === 'boolean' && typeof valueB === 'boolean') {
-      return sortDirection === 'asc'
-        ? (valueA === valueB ? 0 : valueA ? -1 : 1)
-        : (valueA === valueB ? 0 : valueA ? 1 : -1);
-    }
-    
-    return 0;
-  });
+  const { sortColumn, sortDirection, handleSort, sortData } = useTableSort();
+  const { searchTerm, setSearchTerm, filterData } = useTableFilter();
 
   const getGroupName = (url: string): string => {
     for (const group of groups) {
@@ -72,10 +44,8 @@ const IndexationTable = ({
     return "Без группы";
   };
 
-  const filteredData = sortedData.filter(item =>
-    item.url.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
+  const sortedData = sortData(data);
+  const filteredData = filterData(sortedData);
   const totalPages = Math.ceil(totalResults / limit);
 
   return (
@@ -126,3 +96,4 @@ const IndexationTable = ({
 };
 
 export default IndexationTable;
+
