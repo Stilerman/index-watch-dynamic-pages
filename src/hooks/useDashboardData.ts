@@ -16,6 +16,7 @@ export function useDashboardData(selectedGroup?: string, limit = 50) {
     setIsLoading(true);
     try {
       console.log("Загрузка данных из базы...");
+      console.log("Выбранная группа:", selectedGroup);
       
       // 1. Загружаем все группы
       const { data: groupsData, error: groupsError } = await supabase
@@ -87,8 +88,14 @@ export function useDashboardData(selectedGroup?: string, limit = 50) {
       
       // Применяем фильтрацию по группе
       if (selectedGroup && selectedUrls.length > 0) {
-        console.log("Применение фильтра по группе:", selectedUrls);
+        console.log("Применение фильтра по группе. URLs:", selectedUrls);
         resultsQuery = resultsQuery.in('url', selectedUrls);
+      } else if (selectedGroup && selectedUrls.length === 0) {
+        console.log("Выбрана группа без URL, возвращаем пустой результат");
+        setResults([]);
+        setTotalResults(0);
+        setIsLoading(false);
+        return;
       }
       
       // Применяем пагинацию
@@ -127,7 +134,15 @@ export function useDashboardData(selectedGroup?: string, limit = 50) {
   useEffect(() => { 
     console.log("Запуск загрузки данных с параметрами:", { selectedGroup, page, limit });
     fetchData(); 
-  }, [fetchData]);
+    // Сбрасываем страницу на 1 при изменении группы
+    if (selectedGroup) {
+      setPage(1);
+    }
+  }, [fetchData, selectedGroup]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData, page, limit]);
 
   return { 
     results, 

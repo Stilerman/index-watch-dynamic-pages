@@ -29,10 +29,20 @@ export const checkIndexation = async (url: string): Promise<{
     console.log(`Проверка индексации для URL: ${url}`);
     
     // На данный момент используем тестовые данные, раскомментируйте реальный API для боевого режима
+    const randomYandexDate = Math.random() > 0.5 
+      ? new Date().toISOString() 
+      : undefined;
+      
+    console.log(`Создание тестовых данных для ${url}:`, {
+      google: Math.random() > 0.3,
+      yandex: Math.random() > 0.3,
+      yandex_indexdate: randomYandexDate
+    });
+    
     return {
       google: Math.random() > 0.3,
       yandex: Math.random() > 0.3,
-      yandex_indexdate: Math.random() > 0.5 ? new Date().toISOString() : undefined
+      yandex_indexdate: randomYandexDate
     };
     
     /* Код для реального API:
