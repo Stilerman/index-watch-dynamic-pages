@@ -62,12 +62,13 @@ export function useDashboardData() {
           
         if (urlsError) {
           console.error("Ошибка загрузки URL для группы:", group.id, urlsError);
+          continue;
         }
 
         groupsWithUrls.push({
           id: group.id,
           name: group.name,
-          urls: groupUrls ? groupUrls.map(u => u.url) : [],
+          urls: groupUrls?.map(u => u.url) || [],
         });
       }
       
