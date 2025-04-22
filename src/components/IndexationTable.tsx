@@ -37,8 +37,10 @@ const IndexationTable = ({
   const { searchTerm, setSearchTerm, filterData } = useTableFilter();
   const { getGroupName } = useGroupUtils(groups);
 
+  // First sort the data
   const sortedData = sortData(data);
-  const filteredData = filterData(sortedData);
+  // Then filter the sorted data
+  const filteredData = filterData(sortedData, groups);
   const totalPages = Math.ceil(totalResults / limit);
 
   return (
@@ -61,7 +63,7 @@ const IndexationTable = ({
             {filteredData.length > 0 ? (
               filteredData.map((item) => (
                 <IndexationTableRow
-                  key={`${item.url}-${item.date}`}
+                  key={`${item.url}-${item.date?.toString() || "no-date"}`}
                   item={item}
                   groupName={getGroupName(item.url)}
                   onDelete={onDelete}
