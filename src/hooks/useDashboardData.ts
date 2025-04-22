@@ -17,8 +17,8 @@ export function useDashboardData(selectedGroup?: string, limit = 50) {
     try {
       console.log("Загрузка данных из базы...");
       
-      // Базовый запрос для получения групп
-      let groupQuery = supabase
+      // Fetch groups and group URLs
+      const { data: groupsData, error: groupsError } = await supabase
         .from("url_groups")
         .select(`
           id,
@@ -28,54 +28,58 @@ export function useDashboardData(selectedGroup?: string, limit = 50) {
           )
         `);
 
-      // Получаем результаты индексации с фильтрацией по группе
-      let resultsQuery = supabase
-        .from("indexation_results")
-        .select("*, group_urls!inner(group_id)", { count: 'exact' })
-        .order("date", { ascending: false })
-        .range((page - 1) * limit, page * limit - 1);
-
-      // Если выбрана группа, добавляем фильтрацию
-      if (selectedGroup) {
-        groupQuery = groupQuery.eq("id", selectedGroup);
-        resultsQuery = resultsQuery.eq("group_urls.group_id", selectedGroup);
-      }
-
-      const [groupsResponse, resultsResponse] = await Promise.all([
-        groupQuery,
-        resultsQuery
-      ]);
-
-      if (groupsResponse.error) {
-        console.error("Ошибка загрузки групп:", groupsResponse.error);
+      if (groupsError) {
+        console.error("Ошибка загрузки групп:", groupsError);
         toast({
           title: "Ошибка загрузки групп",
-          description: groupsResponse.error.message,
+          description: groupsError.message,
           variant: "destructive"
         });
         return;
       }
 
-      if (resultsResponse.error) {
-        console.error("Ошибка загрузки результатов:", resultsResponse.error);
-        toast({
-          title: "Ошибка загрузки результатов",
-          description: resultsResponse.error.message,
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Преобразуем данные о группах
-      const processedGroups = groupsResponse.data?.map(group => ({
+      // Process groups data
+      const processedGroups = groupsData?.map(group => ({
         id: group.id,
         name: group.name,
         urls: group.group_urls.map(gu => gu.url)
       })) || [];
-
+      
       setGroups(processedGroups);
-      setResults(resultsResponse.data ?? []);
-      setTotalResults(resultsResponse.count ?? 0);
+      
+      // Get URLs to filter by if a group is selected
+      const selectedUrls = selectedGroup 
+        ? processedGroups.find(g => g.id === selectedGroup)?.urls || []
+        : [];
+      
+      // Query for indexation results with proper filtering
+      let resultsQuery = supabase
+        .from("indexation_results")
+        .select("*", { count: 'exact' })
+        .order("date", { ascending: false });
+      
+      // Apply filtering by group if selected
+      if (selectedGroup && selectedUrls.length > 0) {
+        resultsQuery = resultsQuery.in('url', selectedUrls);
+      }
+      
+      // Apply pagination
+      resultsQuery = resultsQuery.range((page - 1) * limit, page * limit - 1);
+
+      const { data: resultsData, count, error: resultsError } = await resultsQuery;
+
+      if (resultsError) {
+        console.error("Ошибка загрузки результатов:", resultsError);
+        toast({
+          title: "Ошибка загрузки результатов",
+          description: resultsError.message,
+          variant: "destructive"
+        });
+        return;
+      }
+
+      setResults(resultsData ?? []);
+      setTotalResults(count ?? 0);
     } catch (err: any) {
       console.error("Ошибка загрузки данных:", err);
       toast({
