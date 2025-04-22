@@ -23,7 +23,7 @@ export function useDashboardData(selectedGroup?: string, limit = 50) {
         .select(`
           id,
           name,
-          group_urls!inner (
+          group_urls (
             url
           )
         `);
@@ -52,10 +52,32 @@ export function useDashboardData(selectedGroup?: string, limit = 50) {
         ? processedGroups.find(g => g.id === selectedGroup)?.urls || []
         : [];
       
-      // Query for indexation results with proper filtering
+      // First, get total count of results for pagination
+      let countQuery = supabase
+        .from("indexation_results")
+        .select("*", { count: 'exact', head: true });
+      
+      // Apply filtering by group if selected
+      if (selectedGroup && selectedUrls.length > 0) {
+        countQuery = countQuery.in('url', selectedUrls);
+      }
+      
+      const { count: totalCount, error: countError } = await countQuery;
+      
+      if (countError) {
+        console.error("Ошибка получения общего количества:", countError);
+        toast({
+          title: "Ошибка получения общего количества",
+          description: countError.message,
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Now get paginated results
       let resultsQuery = supabase
         .from("indexation_results")
-        .select("*", { count: 'exact' })
+        .select("*")
         .order("date", { ascending: false });
       
       // Apply filtering by group if selected
@@ -66,7 +88,7 @@ export function useDashboardData(selectedGroup?: string, limit = 50) {
       // Apply pagination
       resultsQuery = resultsQuery.range((page - 1) * limit, page * limit - 1);
 
-      const { data: resultsData, count, error: resultsError } = await resultsQuery;
+      const { data: resultsData, error: resultsError } = await resultsQuery;
 
       if (resultsError) {
         console.error("Ошибка загрузки результатов:", resultsError);
@@ -79,7 +101,7 @@ export function useDashboardData(selectedGroup?: string, limit = 50) {
       }
 
       setResults(resultsData ?? []);
-      setTotalResults(count ?? 0);
+      setTotalResults(totalCount ?? 0);
     } catch (err: any) {
       console.error("Ошибка загрузки данных:", err);
       toast({
