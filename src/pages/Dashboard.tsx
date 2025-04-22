@@ -1,5 +1,3 @@
-
-// Новый компактный дашборд. Вся лишняя логика вынесена в хуки и отдельные компоненты!
 import React, { useState, useEffect } from "react";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import DashboardActions from "@/components/DashboardActions";
@@ -12,6 +10,8 @@ import { Link } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { RiSettings4Line, RiLinksLine, RiAddLine } from "react-icons/ri";
 import { getApiKey } from "@/services/indexationApi";
+import { batchCheckIndexation } from "@/services/indexationApi";
+import { supabase } from "@/integrations/supabase/client";
 
 const Dashboard = () => {
   const { results, groups, isLoading, reload } = useDashboardData();
@@ -24,6 +24,64 @@ const Dashboard = () => {
     handleCheckUrl,
     handleRefreshAll
   } = useUrlActions({ reload, groups, results });
+
+  // Новая функция для запуска проверки индексации
+  const handleStartIndexing = async () => {
+    try {
+      const apiKey = getApiKey();
+      if (!apiKey) {
+        toast({
+          title: "API ключ не найден",
+          description: "Пожалуйста, добавьте API ключ в настройках перед проверкой URL.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (results.length === 0) {
+        toast({
+          title: "Нет URL для проверки",
+          description: "Сначала добавьте URL адреса для проверки.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({
+        title: "Проверка индексации",
+        description: `Начинаем проверку ${results.length} URL...`
+      });
+
+      const urls = results.map(r => r.url);
+      const newResults = await batchCheckIndexation(urls);
+
+      // Сохраняем результаты в базу
+      for (const result of newResults) {
+        await supabase.from("indexation_results").upsert(
+          {
+            url: result.url,
+            google: result.google,
+            yandex: result.yandex,
+            date: result.date,
+          },
+          { onConflict: "url" }
+        );
+      }
+
+      await reload();
+      toast({
+        title: "Проверка завершена",
+        description: `Проверено ${newResults.length} URL`
+      });
+    } catch (error: any) {
+      console.error("Ошибка при проверке индексации:", error);
+      toast({
+        title: "Ошибка проверки",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  };
 
   useEffect(() => {
     console.log("Отображение результатов:", results.length);
@@ -45,6 +103,7 @@ const Dashboard = () => {
           hasUrls={results.length > 0}
           onAdd={() => setIsAddModalOpen(true)}
           onRefresh={handleRefreshAll}
+          onStartIndexing={handleStartIndexing}
         />
       </div>
 

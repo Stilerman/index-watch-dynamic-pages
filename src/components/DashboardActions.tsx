@@ -1,15 +1,22 @@
 
 import { Button } from "@/components/ui/button";
-import { RiAddLine, RiRefreshLine } from "react-icons/ri";
+import { PlayCircle, Plus, RefreshCw } from "lucide-react";
 
 type Props = {
   isLoading: boolean;
   hasUrls: boolean;
   onAdd: () => void;
   onRefresh: () => void;
+  onStartIndexing: () => void;
 };
 
-export default function DashboardActions({ isLoading, hasUrls, onAdd, onRefresh }: Props) {
+export default function DashboardActions({ 
+  isLoading, 
+  hasUrls, 
+  onAdd, 
+  onRefresh,
+  onStartIndexing 
+}: Props) {
   return (
     <div className="flex space-x-2">
       <Button
@@ -17,7 +24,7 @@ export default function DashboardActions({ isLoading, hasUrls, onAdd, onRefresh 
         className="flex items-center"
         disabled={isLoading}
       >
-        <RiAddLine className="mr-2 h-4 w-4" /> Добавить URL
+        <Plus className="mr-2 h-4 w-4" /> Добавить URL
       </Button>
       <Button
         variant="outline"
@@ -25,7 +32,15 @@ export default function DashboardActions({ isLoading, hasUrls, onAdd, onRefresh 
         className="flex items-center"
         disabled={isLoading || !hasUrls}
       >
-        <RiRefreshLine className="mr-2 h-4 w-4" /> Обновить все
+        <RefreshCw className="mr-2 h-4 w-4" /> Обновить все
+      </Button>
+      <Button
+        variant="secondary"
+        onClick={onStartIndexing}
+        className="flex items-center"
+        disabled={isLoading || !hasUrls}
+      >
+        <PlayCircle className="mr-2 h-4 w-4" /> Запустить проверку
       </Button>
     </div>
   );
