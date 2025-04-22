@@ -16,6 +16,19 @@ export function useDashboardData() {
     try {
       console.log("Загрузка данных из базы...");
       
+      // Проверяем соединение с базой данных
+      const { error: pingError } = await supabase.from("url_groups").select("count").limit(1);
+      if (pingError) {
+        console.error("Ошибка соединения с базой данных:", pingError);
+        toast({
+          title: "Ошибка соединения с БД",
+          description: pingError.message,
+          variant: "destructive"
+        });
+        setIsLoading(false);
+        return;
+      }
+      
       // Получаем результаты индексации
       const { data: dbResults, error: resultsError } = await supabase
         .from("indexation_results")

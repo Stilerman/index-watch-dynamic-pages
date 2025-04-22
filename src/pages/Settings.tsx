@@ -9,6 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getApiKey, setApiKey } from "@/services/indexationApi";
 import { useToast } from "@/hooks/use-toast";
 import { RiInformationLine } from "react-icons/ri";
+import { supabase } from "@/integrations/supabase/client";
 
 const Settings = () => {
   const [apiKey, setApiKeyLocal] = useState("");
@@ -18,7 +19,9 @@ const Settings = () => {
 
   useEffect(() => {
     // Загрузка API ключа при монтировании компонента
-    setApiKeyLocal(getApiKey());
+    const storedKey = getApiKey();
+    console.log("Загружен API ключ из хранилища:", storedKey ? "ключ есть" : "ключа нет");
+    setApiKeyLocal(storedKey);
     
     // Загрузка других настроек из localStorage
     const savedInterval = localStorage.getItem("check-interval") || "24";
@@ -28,13 +31,56 @@ const Settings = () => {
     setNotificationsEnabled(savedNotifications === null ? true : savedNotifications === "true");
   }, []);
 
-  const handleSaveSettings = () => {
-    // Сохраняем API ключ
+  const handleSaveSettings = async () => {
+    console.log("Сохранение настроек...");
+    console.log("API ключ:", apiKey ? "установлен" : "не установлен");
+    
+    // Сохраняем API ключ в localStorage
     setApiKey(apiKey);
     
-    // Сохраняем другие настройки
+    // Сохраняем другие настройки в localStorage
     localStorage.setItem("check-interval", checkInterval);
     localStorage.setItem("notifications-enabled", String(notificationsEnabled));
+    
+    // Сохраняем настройки в БД для дополнительного хранения
+    try {
+      // Сначала проверяем, есть ли уже запись
+      const { data } = await supabase
+        .from("api_settings")
+        .select("*")
+        .limit(1);
+        
+      if (data && data.length > 0) {
+        // Если запись есть, обновляем
+        const { error } = await supabase
+          .from("api_settings")
+          .update({
+            key: apiKey,
+            check_interval: parseInt(checkInterval),
+            notifications_enabled: notificationsEnabled
+          })
+          .eq("id", data[0].id);
+          
+        if (error) {
+          console.error("Ошибка при обновлении настроек в БД:", error);
+        }
+      } else {
+        // Если записи нет, создаем
+        const { error } = await supabase
+          .from("api_settings")
+          .insert({
+            key: apiKey,
+            check_interval: parseInt(checkInterval),
+            notifications_enabled: notificationsEnabled
+          });
+          
+        if (error) {
+          console.error("Ошибка при создании настроек в БД:", error);
+        }
+      }
+    } catch (error) {
+      console.error("Ошибка при сохранении настроек в БД:", error);
+    }
     
     toast({
       title: "Настройки сохранены",

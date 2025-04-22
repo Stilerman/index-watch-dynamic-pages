@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import DashboardActions from "@/components/DashboardActions";
@@ -12,6 +13,7 @@ import { RiSettings4Line, RiLinksLine, RiAddLine } from "react-icons/ri";
 import { getApiKey } from "@/services/indexationApi";
 import { batchCheckIndexation } from "@/services/indexationApi";
 import { supabase } from "@/integrations/supabase/client";
+import { v4 as uuidv4 } from "uuid";
 
 const Dashboard = () => {
   const { results, groups, isLoading, reload } = useDashboardData();
@@ -38,7 +40,17 @@ const Dashboard = () => {
         return;
       }
 
-      if (results.length === 0) {
+      // Собираем все URL из групп
+      const allUrls: string[] = [];
+      groups.forEach(group => {
+        group.urls.forEach(url => {
+          if (!allUrls.includes(url)) {
+            allUrls.push(url);
+          }
+        });
+      });
+
+      if (allUrls.length === 0) {
         toast({
           title: "Нет URL для проверки",
           description: "Сначала добавьте URL адреса для проверки.",
@@ -49,23 +61,31 @@ const Dashboard = () => {
 
       toast({
         title: "Проверка индексации",
-        description: `Начинаем проверку ${results.length} URL...`
+        description: `Начинаем проверку ${allUrls.length} URL...`
       });
 
-      const urls = results.map(r => r.url);
-      const newResults = await batchCheckIndexation(urls);
+      // Проверяем индексацию всех URL
+      console.log("Запуск проверки индексации для", allUrls.length, "URL");
+      const newResults = await batchCheckIndexation(allUrls);
+      console.log("Получены результаты индексации:", newResults);
 
       // Сохраняем результаты в базу
       for (const result of newResults) {
-        await supabase.from("indexation_results").upsert(
-          {
+        try {
+          const { error } = await supabase.from("indexation_results").insert({
+            id: uuidv4(),
             url: result.url,
             google: result.google,
             yandex: result.yandex,
             date: result.date,
-          },
-          { onConflict: "url" }
-        );
+          });
+          
+          if (error) {
+            console.error("Ошибка сохранения результата для", result.url, error);
+          }
+        } catch (insertError) {
+          console.error("Исключение при сохранении результата", insertError);
+        }
       }
 
       await reload();
@@ -100,7 +120,7 @@ const Dashboard = () => {
         <h1 className="text-2xl font-bold">Дашборд</h1>
         <DashboardActions
           isLoading={isLoading}
-          hasUrls={results.length > 0}
+          hasUrls={groups.some(g => g.urls.length > 0)}
           onAdd={() => setIsAddModalOpen(true)}
           onRefresh={handleRefreshAll}
           onStartIndexing={handleStartIndexing}
@@ -142,7 +162,7 @@ const Dashboard = () => {
         groups={groups}
       />
 
-      {results.length === 0 && (
+      {groups.length === 0 || groups.every(g => g.urls.length === 0) ? (
         <div className="py-12 text-center">
           <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
             <RiLinksLine className="h-8 w-8 text-gray-400" />
@@ -158,7 +178,7 @@ const Dashboard = () => {
             <RiAddLine className="mr-2 h-4 w-4" /> Добавить первый URL
           </button>
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

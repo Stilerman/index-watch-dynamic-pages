@@ -17,6 +17,11 @@ export function useUrlActions(params: {
   // Добавление URL (либо в существующую, либо в новую группу)
   const handleAddUrls = async (urls: string[], groupIdOrName?: string) => {
     try {
+      console.log("Добавляем URLs:", urls);
+      if (groupIdOrName) {
+        console.log("В группу:", groupIdOrName);
+      }
+      
       const apiKey = getApiKey();
       if (!apiKey) {
         toast({
@@ -58,20 +63,24 @@ export function useUrlActions(params: {
       // Проверка индексации
       console.log("Пакетная проверка", urls.length, "URL адресов");
       const newResults = await batchCheckIndexation(urls);
+      console.log("Получены результаты проверки:", newResults);
 
       // Сохраняем результаты в базу
       for (const result of newResults) {
-        await supabase.from("indexation_results")
-          .upsert(
-            {
-              id: uuidv4(), // Добавляем явный ID
-              url: result.url,
-              google: result.google,
-              yandex: result.yandex,
-              date: result.date,
-            },
-            { onConflict: "url" }
-          );
+        // Используем insert вместо upsert
+        const { error } = await supabase.from("indexation_results")
+          .insert({
+            id: uuidv4(),
+            url: result.url,
+            google: result.google,
+            yandex: result.yandex,
+            date: result.date,
+          });
+          
+        if (error) {
+          console.error("Ошибка при сохранении результата:", error);
+          // Продолжаем обработку других результатов
+        }
       }
 
       // Связываем URLs с группой, если указана группа
@@ -157,18 +166,15 @@ export function useUrlActions(params: {
       const [result] = await batchCheckIndexation([url]);
       
       if (result) {
-        // Обновляем запись в БД
+        // Обновляем запись в БД - используем insert вместо upsert
         const { error } = await supabase.from("indexation_results")
-          .upsert(
-            {
-              id: uuidv4(), // Добавляем явный ID
-              url: result.url,
-              google: result.google,
-              yandex: result.yandex,
-              date: result.date,
-            },
-            { onConflict: "url" }
-          );
+          .insert({
+            id: uuidv4(),
+            url: result.url,
+            google: result.google,
+            yandex: result.yandex,
+            date: result.date,
+          });
           
         if (error) {
           console.error("Ошибка при обновлении результата:", error);
@@ -211,19 +217,16 @@ export function useUrlActions(params: {
       const urls = results.map(r => r.url);
       const newResults = await batchCheckIndexation(urls);
 
-      // Обновляем записи в БД
+      // Обновляем записи в БД - используем insert вместо upsert
       for (const result of newResults) {
         const { error } = await supabase.from("indexation_results")
-          .upsert(
-            {
-              id: uuidv4(), // Добавляем явный ID
-              url: result.url,
-              google: result.google,
-              yandex: result.yandex,
-              date: result.date,
-            },
-            { onConflict: "url" }
-          );
+          .insert({
+            id: uuidv4(),
+            url: result.url,
+            google: result.google,
+            yandex: result.yandex,
+            date: result.date,
+          });
           
         if (error) {
           console.error("Ошибка при обновлении результата:", error, "для URL:", result.url);
