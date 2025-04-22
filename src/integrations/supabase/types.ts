@@ -76,6 +76,7 @@ export type Database = {
           id: string
           url: string
           yandex: boolean
+          yandex_indexdate: string | null
         }
         Insert: {
           date?: string
@@ -83,6 +84,7 @@ export type Database = {
           id?: string
           url: string
           yandex: boolean
+          yandex_indexdate?: string | null
         }
         Update: {
           date?: string
@@ -90,6 +92,7 @@ export type Database = {
           id?: string
           url?: string
           yandex?: boolean
+          yandex_indexdate?: string | null
         }
         Relationships: [
           {
