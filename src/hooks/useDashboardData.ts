@@ -4,7 +4,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { IndexationResult, UrlGroup } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 
-// Возвращает состояния для dashboard: {results, groups, loading, reload()}
 export function useDashboardData() {
   const [results, setResults] = useState<IndexationResult[]>([]);
   const [groups, setGroups] = useState<UrlGroup[]>([]);
@@ -17,7 +16,7 @@ export function useDashboardData() {
       console.log("Загрузка данных из базы...");
       
       // Проверяем соединение с базой данных
-      const { error: pingError } = await supabase.from("url_groups").select("count").limit(1);
+      const { error: pingError } = await supabase.from("urls").select("count").limit(1);
       if (pingError) {
         console.error("Ошибка соединения с базой данных:", pingError);
         toast({
@@ -32,7 +31,7 @@ export function useDashboardData() {
       // Получаем результаты индексации
       const { data: dbResults, error: resultsError } = await supabase
         .from("indexation_results")
-        .select("*")
+        .select("url, google, yandex, date")
         .order("date", { ascending: false });
         
       if (resultsError) {
@@ -49,11 +48,17 @@ export function useDashboardData() {
       console.log("Загружено результатов:", dbResults?.length);
       setResults(dbResults ?? []);
 
-      // Получаем группы
-      const { data: dbGroups, error: groupsError } = await supabase
+      // Получаем группы и их URL
+      const { data: groups, error: groupsError } = await supabase
         .from("url_groups")
-        .select("*");
-        
+        .select(`
+          id,
+          name,
+          group_urls!inner (
+            url
+          )
+        `);
+
       if (groupsError) {
         console.error("Ошибка загрузки групп:", groupsError);
         toast({
@@ -64,29 +69,17 @@ export function useDashboardData() {
         setIsLoading(false);
         return;
       }
-      
-      // Для каждой группы — подтягиваем ее url
-      const groupsWithUrls: UrlGroup[] = [];
-      for (const group of dbGroups ?? []) {
-        const { data: groupUrls, error: urlsError } = await supabase
-          .from("group_urls")
-          .select("url")
-          .eq("group_id", group.id);
-          
-        if (urlsError) {
-          console.error("Ошибка загрузки URL для группы:", group.id, urlsError);
-          continue;
-        }
 
-        groupsWithUrls.push({
-          id: group.id,
-          name: group.name,
-          urls: groupUrls?.map(u => u.url) || [],
-        });
-      }
+      // Преобразуем данные в нужный формат
+      const groupsWithUrls = groups?.map(group => ({
+        id: group.id,
+        name: group.name,
+        urls: group.group_urls.map(gu => gu.url)
+      })) || [];
       
       console.log("Загружено групп:", groupsWithUrls.length);
       setGroups(groupsWithUrls);
+      
     } catch (err: any) {
       console.error("Ошибка загрузки данных:", err);
       toast({

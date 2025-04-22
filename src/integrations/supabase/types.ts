@@ -60,6 +60,13 @@ export type Database = {
             referencedRelation: "url_groups"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "group_urls_url_fkey"
+            columns: ["url"]
+            isOneToOne: false
+            referencedRelation: "urls"
+            referencedColumns: ["url"]
+          },
         ]
       }
       indexation_results: {
@@ -84,7 +91,15 @@ export type Database = {
           url?: string
           yandex?: boolean
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "indexation_results_url_fkey"
+            columns: ["url"]
+            isOneToOne: false
+            referencedRelation: "urls"
+            referencedColumns: ["url"]
+          },
+        ]
       }
       url_groups: {
         Row: {
@@ -101,6 +116,24 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+        }
+        Relationships: []
+      }
+      urls: {
+        Row: {
+          created_at: string
+          id: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          url?: string
         }
         Relationships: []
       }

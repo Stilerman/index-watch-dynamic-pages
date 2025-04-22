@@ -5,7 +5,6 @@ import { v4 as uuidv4 } from "uuid";
 import { batchCheckIndexation, getApiKey } from "@/services/indexationApi";
 import { UrlGroup, IndexationResult } from "@/types";
 
-// Группы и список результатов передаются из useDashboardData
 export function useUrlActions(params: {
   reload: () => Promise<void>,
   groups: UrlGroup[],
@@ -14,7 +13,6 @@ export function useUrlActions(params: {
   const { reload, groups, results } = params;
   const { toast } = useToast();
 
-  // Добавление URL (либо в существующую, либо в новую группу)
   const handleAddUrls = async (urls: string[], groupIdOrName?: string) => {
     try {
       console.log("Добавляем URLs:", urls);
@@ -32,6 +30,20 @@ export function useUrlActions(params: {
         return;
       }
 
+      // Сначала добавляем URLs в таблицу urls
+      for (const url of urls) {
+        const { error: urlError } = await supabase
+          .from("urls")
+          .insert({ url: url.trim() })
+          .select()
+          .maybeSingle();
+
+        if (urlError && !urlError.message.includes('duplicate')) {
+          console.error("Ошибка при добавлении URL:", urlError);
+          continue;
+        }
+      }
+
       let groupId = "";
       if (groupIdOrName) {
         // Проверяем, существует ли такая группа
@@ -39,10 +51,12 @@ export function useUrlActions(params: {
         if (!existing) {
           // Если группы нет, создаем новую
           const newGroupId = uuidv4();
-          const { data: createdGroup, error } = await supabase.from("url_groups")
+          const { error } = await supabase
+            .from("url_groups")
             .insert({ id: newGroupId, name: groupIdOrName })
             .select()
             .maybeSingle();
+            
           if (error) {
             console.error("Ошибка создания группы:", error);
             toast({
@@ -52,7 +66,7 @@ export function useUrlActions(params: {
             });
             return;
           }
-          groupId = createdGroup ? createdGroup.id : newGroupId;
+          groupId = newGroupId;
         } else {
           groupId = existing.id;
         }
@@ -67,8 +81,8 @@ export function useUrlActions(params: {
 
       // Сохраняем результаты в базу
       for (const result of newResults) {
-        // Используем insert вместо upsert
-        const { error } = await supabase.from("indexation_results")
+        const { error } = await supabase
+          .from("indexation_results")
           .insert({
             id: uuidv4(),
             url: result.url,
@@ -79,14 +93,14 @@ export function useUrlActions(params: {
           
         if (error) {
           console.error("Ошибка при сохранении результата:", error);
-          // Продолжаем обработку других результатов
         }
       }
 
       // Связываем URLs с группой, если указана группа
       if (groupId) {
         for (const url of urls) {
-          const { error } = await supabase.from("group_urls")
+          const { error } = await supabase
+            .from("group_urls")
             .insert({
               id: uuidv4(),
               group_id: groupId,
